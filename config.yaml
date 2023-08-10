@@ -1,0 +1,27 @@
+num_nodes: 2
+num_cycles: 100
+node1:
+  alpha: 0.5
+  capacitance: 47.0e-6
+  von: 3.0
+  voff: 2.4
+  eadv: 28.77e-6
+  escan: 3.0e-6
+  nominal_runtime: 100
+  harvester:
+    harvesting_mode: constant
+    power: default
+
+node2:
+  alpha: 0.5
+  capacitance: 47.0e-6
+  von: 3.0
+  voff: 2.4
+  eadv: 28.77e-6
+  escan: 3.0e-6
+  nominal_runtime: 100
+  harvester:
+    harvesting_mode: constant
+    power: default
+
+
