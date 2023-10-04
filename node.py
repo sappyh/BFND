@@ -10,6 +10,7 @@ from enum import Enum
 import numpy as np
 from interface import Subscriber
 import logging
+from matplotlib import pyplot as plt
 
 class ACTION(Enum):
     SLEEP = 0
@@ -24,8 +25,13 @@ class RADIO_STATE(Enum):
     SUCCESS = 1
     FAILURE = 0
 
+class RUN_TYPE(Enum):
+    SCANNING= 0
+    ADVERTISING = 1
+    NORMAL = 2
+
 class Node():
-    def __init__ (self, id, energy_harvester, clock, radio, offset, alpha, capacitance, von, voff, eadv, escan, nominal_time_period, run_time = 100, log_level=logging.INFO):
+    def __init__ (self, id, energy_harvester, clock, radio, offset, alpha, capacitance, von, voff, eadv, escan, nominal_time_period, run_time = 100, runtype= RUN_TYPE.NORMAL, log_level=logging.INFO):
         self.energy_harvester = energy_harvester
         self.clock = Subscriber("clock", clock)
         self.radio = radio
@@ -43,6 +49,8 @@ class Node():
         self.nominal_time_period = nominal_time_period
         self.run_time = run_time
         self.channel_map = np.zeros(nominal_time_period)
+        self.runtype = runtype
+        print( self.id, self.runtype)
         
         self.current_run_time = 0
         self.ASN = 0
@@ -85,16 +93,18 @@ class Node():
                 self.radio.sleep()
     
     def build_channel_map(self):
-        if self.radio.get_message() == RADIO_STATE.SUCCESS:
-            self.channel_map[self.ASN % self.nominal_time_period] += 1
+        if self.radio.get_message() == RADIO_STATE.SUCCESS and self.state == STATE.ON:
+            self.channel_map[(self.ASN - self.offset) % self.nominal_time_period] += 1
             if self.action == ACTION.ADVERTISE:
-                self.logger.info("Advertise Success")
+                self.logger.info("Node: %s, ASN: %s, Advertise Success", self.id, self.ASN)
                 self.metrics["adv_success"] += 1
             elif self.action == ACTION.SCAN:
-                self.logger.info("Scan Success")
+                self.logger.info("Node: %s, ASN: %s, Scan Success", self.id, self.ASN)
                 self.metrics["scan_success"] += 1
-        else:
-            self.channel_map= 0.95 * self.channel_map
+
+    def show_channel_map(self):
+        plt.plot(self.channel_map)
+        plt.savefig("channel_map.png")
 
     def print_stats(self):
         print("Node" + str(self.id) + " Metrics")
@@ -110,45 +120,57 @@ class Node():
                 self.compute_energy_level(self.energy_harvester.get_energy())
             
             if self.state == STATE.ON:
-                self.logger.debug("Node" + str(self.id) +" is on at ASN: " + str(self.ASN))
+                if self.runtype == RUN_TYPE.NORMAL:
+                    self.logger.debug("Node" + str(self.id) +" is on at ASN: " + str(self.ASN))
 
-                # Woke up at perfectly the right time
-                if self.ASN % self.nominal_time_period == self.offset or self.current_run_time == 0 :
-                    self.current_run_time += 1
+                    # Woke up at perfectly the right time
+                    if self.ASN % self.nominal_time_period == self.offset or self.current_run_time == 0 :
+                        self.current_run_time += 1
 
-                    ## Check channel map to see if we should advertise or scan
-                    if self.channel_map[self.ASN % self.nominal_time_period] > 0.8:
-                        self.action = ACTION.SLEEP
-                        self.next_wakeup = self.ASN + np.argmax(self.channel_map)
-                        self.do_action(ACTION.SLEEP)
-                    else:
-                        self.next_wakeup = self.ASN + self.nominal_time_period
-                        if(random.uniform(0,1) < self.alpha):
-                            self.action = ACTION.ADVERTISE
-                            self.do_action(ACTION.ADVERTISE)
+                        ## Check channel map to see if we should advertise or scan
+                        if self.channel_map[self.ASN % self.nominal_time_period] > 0.8:
+                            self.action = ACTION.SLEEP
+                            self.next_wakeup = self.ASN + np.argmax(self.channel_map)
+                            self.do_action(ACTION.SLEEP)
                         else:
-                            self.action = ACTION.SCAN
+                            self.next_wakeup = self.ASN + self.nominal_time_period
+                            if(random.uniform(0,1) < self.alpha):
+                                self.action = ACTION.ADVERTISE
+                                self.do_action(ACTION.ADVERTISE)
+                            else:
+                                self.action = ACTION.SCAN
+                                self.do_action(ACTION.SCAN)
+                    
+                    # Woke up at the after the right time
+                    elif self.ASN  > self.next_wakeup:
+                        self.next_wakeup = (math.floor(self.ASN/self.nominal_time_period) + 1) * self.nominal_time_period
+                        self.current_run_time += 1
+                        self.action = ACTION.SCAN
+                        self.do_action(ACTION.SCAN)
+                        
+                    # Woke up before the right time
+                    elif self.ASN < self.next_wakeup:
+                        ## Check if this is because we are scanning
+                        if self.action == ACTION.SCAN:
                             self.do_action(ACTION.SCAN)
+                        else:
+                            self.do_action(ACTION.SLEEP)
+                    
+                    elif self.ASN == self.next_wakeup:
+                        self.next_wakeup = (math.floor(self.ASN/self.nominal_time_period) + 1) * self.nominal_time_period
+                        self.action = ACTION.ADVERTISE
+                        self.do_action(ACTION.ADVERTISE)
+
+                elif self.runtype == RUN_TYPE.ADVERTISING:
+                    self.logger.debug("Node" + str(self.id) +" is on at ASN: " + str(self.ASN))
+                    self.current_run_time += 1
+                    self.action = ACTION.ADVERTISE
+                    self.do_action(ACTION.ADVERTISE)
                 
-                # Woke up at the after the right time
-                elif self.ASN  > self.next_wakeup:
-                    self.next_wakeup = (math.floor(self.ASN/self.nominal_time_period) + 1) * self.nominal_time_period
+                elif self.runtype == RUN_TYPE.SCANNING:
+                    self.logger.debug("Node" + str(self.id) +" is on at ASN: " + str(self.ASN))
                     self.current_run_time += 1
                     self.action = ACTION.SCAN
                     self.do_action(ACTION.SCAN)
-                    
-                # Woke up before the right time
-                elif self.ASN < self.next_wakeup:
-                    ## Check if this is because we are scanning
-                    if self.action == ACTION.SCAN:
-                        self.do_action(ACTION.SCAN)
-                    else:
-                        self.do_action(ACTION.SLEEP)
-                
-                elif self.ASN == self.next_wakeup:
-                    self.next_wakeup = (math.floor(self.ASN/self.nominal_time_period) + 1) * self.nominal_time_period
-                    self.action = ACTION.ADVERTISE
-                    self.do_action(ACTION.ADVERTISE)
-
 
             

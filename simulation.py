@@ -1,5 +1,5 @@
 ## import all the classes
-from node import Node
+from node import Node, RUN_TYPE
 from radio import Radio
 from clock import Clock
 import threading
@@ -12,10 +12,10 @@ import random
 from harvester import harvestingmode
 
 import logging
-logging.basicConfig(level = logging.INFO)
+logging.basicConfig(filename='debug.log',level = logging.DEBUG)
 
 ## Create dictionary objects from config.yaml file
-with open("config.yaml", 'r') as stream:
+with open("observe_distribution.yaml", 'r') as stream:
     try:
         config = yaml.load(stream)
     except yaml.YAMLError as exc:
@@ -43,7 +43,8 @@ nodes = []
 radios=[]
 harvesters = []
 for i in range(num_nodes):
-    radios.append(Radio())
+    radio = Radio(loglevel=logging.DEBUG)
+    radios.append(radio)
     clock = Clock(1000000, clock_publisher)
     if nodes_config[i].get('harvester').get('harvesting_mode') == 'constant':
         power = nodes_config[i].get('harvester').get('power')
@@ -66,20 +67,30 @@ for i in range(num_nodes):
         harvesters.append(harvester)
     offset = random.randint(0, nodes_config[i].get('nominal_runtime')-1)
 
-    node = Node(i+1, harvester, clock_publisher, radios[i], offset,
+    runtype = RUN_TYPE.NORMAL
+    if (nodes_config[i].get('runtype') == 'normal'):
+        runtype = RUN_TYPE.NORMAL
+    elif (nodes_config[i].get('runtype') == 'scanning'):
+        runtype = RUN_TYPE.SCANNING
+    elif (nodes_config[i].get('runtype') == 'advertising'):
+        runtype = RUN_TYPE.ADVERTISING
+
+    node = Node(i, harvester, clock_publisher, radio, offset,
                 nodes_config[i].get('alpha'),
                 nodes_config[i].get('capacitance'),
                 nodes_config[i].get('von'),
                 nodes_config[i].get('voff'),
                 nodes_config[i].get('eadv'),  
                 nodes_config[i].get('escan'),
-                nodes_config[i].get('nominal_runtime'), num_cycles)
+                nodes_config[i].get('nominal_runtime'), num_cycles,
+                runtype)
     nodes.append(node)
 
 ## Connect the radios to one another
 for i in range(num_nodes):
     for j in range(num_nodes):
         if i != j:
+            print("Connecting radio " + str(i) + " to radio " + str(j))
             radios[i].connectto(radios[j])
 
 ## Run the simulation
@@ -137,5 +148,4 @@ while slot < num_cycles * nodes_config[0].get("nominal_runtime"):
     for t in threads:
         t.join()
 
-for i in range(num_nodes):
-    nodes[i].print_stats()
+# nodes[-1].show_channel_map()

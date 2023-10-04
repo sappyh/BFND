@@ -1,4 +1,6 @@
 import threading
+import queue
+
 class Publisher:
     def __init__(self, topic):
         self.topic = topic
@@ -15,33 +17,23 @@ class Publisher:
 class Subscriber:
     def __init__(self, topic, publisher):
         self.topic = topic
-        self.message = []
-        self.lock = threading.Lock()
+        self.message_queue = queue.Queue()
         self.subscribe(publisher)
     
     def subscribe(self, publisher):
         publisher.subscribe(self)
     
     def notify(self, message):
-        self.lock.acquire()
-        if message is None:
-            self.lock.release()
-        else:
-            self.message.append(message)
-            self.lock.release()
+        if message is not None:
+            self.message_queue.put(message)
 
     def get_message(self):
-        self.lock.acquire()
-        if(len(self.message) > 0):
-            message = self.message.pop(0)
-            self.lock.release()
-            return message
-        else:
-            self.lock.release()
-            return None
+        message = None
+        if(self.message_queue.qsize() > 0):
+            message = self.message_queue.get()
+
+        return message
     
     def get_number_of_messages(self):
-        self.lock.acquire()
-        n = len(self.message)
-        self.lock.release()
+        n = self.message_queue.qsize()
         return n

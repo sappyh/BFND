@@ -8,6 +8,7 @@ node1:
   eadv: 28.77e-6
   escan: 3.0e-6
   nominal_runtime: 100
+  runttype: normal
   harvester:
     harvesting_mode: constant
     power: default
@@ -20,6 +21,7 @@ node2:
   eadv: 28.77e-6
   escan: 3.0e-6
   nominal_runtime: 100
+  runttype: normal
   harvester:
     harvesting_mode: constant
     power: default

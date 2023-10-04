@@ -28,13 +28,13 @@ class radioMessage:
         if(self.ASN == message.ASN):
             if(self.radioEvent == RadioEvent.ADVERTISE):
                 if(message.radioEvent == RadioEvent.ADVERTISE):
-                    self.logger.debug("Message :node id: %s ASN: %s radioEvent: %s", str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
+                    self.logger.debug("Message : self node id: %s, received node id: %s ASN: %s radioEvent: %s", str(self.nodeID), str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
                     return RADIO_STATE.SUCCESS
                 else:
                     return RADIO_STATE.FAILURE
             elif(self.radioEvent == RadioEvent.SCAN):
                 if(message.radioEvent == RadioEvent.ADVERTISE):
-                    self.logger.debug("Message : node id: %s ASN: %s radioEvent: %s", str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
+                    self.logger.debug("Message : self node id: %s,received node id: %s ASN: %s radioEvent: %s", str(self.nodeID), str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
                     return RADIO_STATE.SUCCESS
                 else:
                     return RADIO_STATE.FAILURE
@@ -49,14 +49,18 @@ class Radio:
         self.receive_message = False
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(loglevel)
+        self.subscriber = None
     
     # Functions used by the node
     def connectto(self, other_radio):
-        self.subscriber = Subscriber("radio", getattr(other_radio, "publisher"))
+        if self.subscriber == None:
+            self.subscriber = Subscriber("radio", getattr(other_radio, "publisher"))
+        else:
+            self.subscriber.subscribe(getattr(other_radio, "publisher"))
    
     def advertise(self, asn, nodeID):
-        self.logger.debug("Advertising")
-        message = radioMessage(asn, RadioEvent.ADVERTISE, nodeID)
+        self.logger.debug("node: %s, ASN: %s, Advertising" , str(nodeID), str(asn))
+        message = radioMessage(asn, RadioEvent.ADVERTISE, nodeID, loglevel=self.logger.getEffectiveLevel())
         self.transmit_message = message
         self.receive_message = False
         self.lock.acquire()
@@ -64,24 +68,26 @@ class Radio:
         self.lock.release()
 
     def scan(self, asn, nodeID):
-        self.logger.debug("Scanning")
-        message = radioMessage(asn, RadioEvent.SCAN, nodeID)
-        self.transmit_message = message
+        self.logger.debug("node: %s, ASN: %s, Scanning" , str(nodeID), str(asn))
+        message = radioMessage(asn, RadioEvent.SCAN, nodeID, loglevel= self.logger.getEffectiveLevel())
+        self.transmitted_message = message
+        self.transmit_message = None
         self.receive_message = False
         self.lock.acquire()
         self.subscribe_done = False
         self.lock.release()
     
     def get_message(self):
-        while True:
-            self.lock.acquire()
-            if(self.subscribe_done == True):
-                self.lock.release()
-                break
+        self.lock.acquire()
+        if(self.subscribe_done == True and self.transmitted_message is not None):
+            self.subscribe_done = False
             self.lock.release()
-            time.sleep(0.1)
-
-        return RADIO_STATE.SUCCESS if self.receive_message == RADIO_STATE.SUCCESS else RADIO_STATE.FAILURE
+            # self.logger.debug(" GET_MESSAGE: %s, %s", self.transmitted_message.nodeID, self.receive_message)
+            self.transmitted_message = None
+            return RADIO_STATE.SUCCESS if self.receive_message == RADIO_STATE.SUCCESS else RADIO_STATE.FAILURE
+        else:
+            self.lock.release()
+            return RADIO_STATE.FAILURE
 
     # Functions used by the simulation
     def publish(self):
@@ -93,19 +99,31 @@ class Radio:
     
     def subscribe(self):
         n = self.subscriber.get_number_of_messages()
-        if n>1 and self.transmitted_message is not None:
-            self.log.info("Interference: More than one message in the queue")
-            for i in range(n):
-                message= self.subscriber.get_message()
-                self.logger.debug("Received : node id: %s ASN: %s radioEvent: %s", str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
-        elif self.transmitted_message is not None:
-                self.receive_message = self.transmitted_message.check_message(self.subscriber.get_message())
+        
+        if self.transmitted_message is not None:
+            # self.logger.debug("Node id: %s, Number of messages in the queue: %s", self.transmitted_message.nodeID, str(n))
+            if n>1 and (self.transmitted_message.radioEvent==RadioEvent.ADVERTISE):
+                self.logger.info("Interference: More than one message in the queue")
+                for i in range(n):
+                    message= self.subscriber.get_message()
+                    self.logger.debug("Received : node id: %s ASN: %s radioEvent: %s", str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
+                self.receive_message = RADIO_STATE.FAILURE
+            elif n>1 and (self.transmitted_message.radioEvent==RadioEvent.SCAN):
+                    for i in range(n):
+                        message = self.subscriber.get_message()
+                        self.logger.debug("Received : node id: %s ASN: %s radioEvent: %s", str(message.nodeID), str(message.ASN), " " + str(message.radioEvent))
+                        self.receive_message = self.transmitted_message.check_message(message)
+            
+            elif n==1 and (self.transmitted_message.radioEvent in (RadioEvent.ADVERTISE, RadioEvent.SCAN)):
+                    message = self.subscriber.get_message()
+                    self.receive_message = self.transmitted_message.check_message(message)
+        
         else:
             # Removing the messages from the queue
             for i in range(n):
-                message= self.subscriber.get_message()
+                    message= self.subscriber.get_message()
 
-        self.transmitted_message = None
+
         self.lock.acquire()
         self.subscribe_done = True
         self.lock.release()
