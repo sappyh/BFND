@@ -44,11 +44,12 @@ class Radio:
         self.publisher = Publisher("radio")
         self.transmit_message = None
         self.transmitted_message = None
-        self.lock = threading.Lock()
+        # self.lock = threading.Lock()
         self.subscribe_done = False
         self.receive_message = False
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(loglevel)
+        self.logger.disabled = True
         self.subscriber = None
     
     # Functions used by the node
@@ -63,9 +64,9 @@ class Radio:
         message = radioMessage(asn, RadioEvent.ADVERTISE, nodeID, loglevel=self.logger.getEffectiveLevel())
         self.transmit_message = message
         self.receive_message = False
-        self.lock.acquire()
+        # self.lock.acquire()
         self.subscribe_done = False
-        self.lock.release()
+        # self.lock.release()
 
     def scan(self, asn, nodeID):
         self.logger.debug("node: %s, ASN: %s, Scanning" , str(nodeID), str(asn))
@@ -73,20 +74,19 @@ class Radio:
         self.transmitted_message = message
         self.transmit_message = None
         self.receive_message = False
-        self.lock.acquire()
+        # self.lock.acquire()
         self.subscribe_done = False
-        self.lock.release()
+        # self.lock.release()
     
     def get_message(self):
-        self.lock.acquire()
+        # self.lock.acquire()
         if(self.subscribe_done == True and self.transmitted_message is not None):
             self.subscribe_done = False
-            self.lock.release()
-            # self.logger.debug(" GET_MESSAGE: %s, %s", self.transmitted_message.nodeID, self.receive_message)
+            # self.lock.release()
             self.transmitted_message = None
             return RADIO_STATE.SUCCESS if self.receive_message == RADIO_STATE.SUCCESS else RADIO_STATE.FAILURE
         else:
-            self.lock.release()
+            # self.lock.release()
             return RADIO_STATE.FAILURE
 
     # Functions used by the simulation
@@ -117,6 +117,7 @@ class Radio:
             elif n==1 and (self.transmitted_message.radioEvent in (RadioEvent.ADVERTISE, RadioEvent.SCAN)):
                     message = self.subscriber.get_message()
                     self.receive_message = self.transmitted_message.check_message(message)
+                        
         
         else:
             # Removing the messages from the queue
@@ -124,9 +125,9 @@ class Radio:
                     message= self.subscriber.get_message()
 
 
-        self.lock.acquire()
+        # self.lock.acquire()
         self.subscribe_done = True
-        self.lock.release()
+        # self.lock.release()
         
 
     def sleep(self):
