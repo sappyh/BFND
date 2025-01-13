@@ -16,9 +16,11 @@ import h5py
 
 from multiprocessing import Pool
 from multiprocessing import cpu_count
+from multiprocessing import Lock
 
 import sys
 import warnings
+
 
 # Taken from Bonito
 class CachedDataset(object):
@@ -41,6 +43,7 @@ class CachedDataset(object):
         self._cache_size = cache_size
 
     def __getitem__(self, key):
+        #logging.debug(f"DataReader.__getitem__ called with key: {key}")
         if isinstance(key, slice):
             return self._ds[key]
         elif isinstance(key, int):
@@ -50,9 +53,13 @@ class CachedDataset(object):
         return len(self._ds)
 
     def update_cache(self, idx):
-        self._istart = (idx // self._cache_size) * self._cache_size
-        self._iend = min(len(self._ds), self._istart + self._cache_size)
-        self._buf = self._ds[self._istart : self._iend]
+        #logging.debug(f"CachedDataset.update_cache called for index: {idx}")
+        chunk_start = (idx // self._cache_size) * self._cache_size
+        chunk_end = min(len(self._ds), chunk_start + self._cache_size)
+        self._buf = self._ds[chunk_start:chunk_end]
+        #logging.debug(f"Accessing dataset chunk: start={chunk_start}, end={chunk_end}")
+        self._istart = chunk_start
+        self._iend = chunk_end
 
     def get_cached(self, idx):
         if idx >= self._istart and idx < self._iend:
@@ -69,48 +76,42 @@ class DataReader(object):
         self.path = path
         self.cache_size = cache_size
         self._datasets = dict()
+        self._lock = Lock()  # Multiprocessing lock
+        self._hf = None
 
     def __enter__(self):
-        self._hf = h5py.File(self.path, "r")
-        self.nodes = list(self._hf["data"].keys())
-
-        self.time = self._hf["time"]
-        for node in self._hf["data"].keys():
-            self._datasets[node] = CachedDataset(self._hf["data"][node], self.cache_size)
-
-        return self
+        self.open()
 
     def open(self):
-        self._hf = h5py.File(self.path, "r")
-        self.nodes = list(self._hf["data"].keys())
-
-        self.time = self._hf["time"]
-        for node in self._hf["data"].keys():
-            self._datasets[node] = CachedDataset(self._hf["data"][node], self.cache_size)
-
+        with self._lock:
+            self._hf = h5py.File(self.path, "r")
+            self.nodes = list(self._hf["data"].keys())
+            self.time = self._hf["time"]
+            for node in self._hf["data"].keys():
+                self._datasets[node] = CachedDataset(self._hf["data"][node], self.cache_size)
         return self
-    
+
     def __exit__(self, *exc):
         self._hf.close()
 
     def close(self):
         self._hf.close()
-    
+
     def __getitem__(self, key):
         if isinstance(key, int):
             return self._datasets[f"node{key}"]
         else:
             return self._datasets[key]
-    
 
     def __len__(self):
-        return len(self.time)      
+        return len(self.time)
 
 
 class harvestingmode(Enum):
     CONSTANT = 0
-    GAUSSIAN =1
+    GAUSSIAN = 1
     FILE = 2
+
 
 class Harvester:
     def __init__(self, mode, file, clock, log_level=logging.INFO):
@@ -119,6 +120,7 @@ class Harvester:
         self.offset = 0
         self.Ts = 0
         self.data = None
+        self.data_reader = None
         self.energy_harvested = 0
         self.clock = clock
         self.subscriber = Subscriber("clock", self.clock)
@@ -126,57 +128,85 @@ class Harvester:
         self.energy_per_clock_tick = 0
         self.mean = 0
         self.std = 0
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(log_level)
-        self.logger.disabled = True
         self.len = 0
-    
+
+    def close(self):
+        self.subscriber.shutdown()
+        self.data_reader.close()
+
     def set_constant(self, energy_per_clock_tick):
         self.energy_per_clock_tick = energy_per_clock_tick
-    
+
     def set_gaussian(self, mean, std):
         self.mean = mean
         self.std = std
-    
+
     def set_file(self, file, Ts):
-        self.file = DataReader(file).open()
-        self.offset = np.random.randint(0, len(self.file))
-        self.data = self.file[0]
-        self.Ts = Ts
-        self.len = len(self.data)
-        
-        
+        try:
+            self.data_reader = DataReader(file, cache_size=500000000)
+            self.file = self.data_reader.open()  # Open the file safely
+            self.offset = np.random.randint(0, len(self.file))
+            self.data = self.file[0]
+            self.Ts = Ts
+            self.len = len(self.data)  # Store the dataset length
+            # Precompute cumulative sums
+        except Exception as e:
+            logging.error(f"Harvester: Failed to open or process file {file}: {e}")
+            self.file = None
+            self.data = None
+            self.len = 0
+            self.cumsum_data = None
 
     def get_energy(self):
-        new_tick = self.subscriber.get_message()
-        if(new_tick == self.previous_tick + 1 or self.previous_tick == 0):
+        try:
+            new_tick = self.subscriber.get_message()
+
+            # Check clock tick consistency
+            if new_tick != self.previous_tick + 1 and self.previous_tick != 0:
+                logging.error(f"Clock ticks are not in order: {new_tick} {self.previous_tick}")
+                return 0
+
             self.previous_tick = new_tick
+
+            # Handle different harvesting modes
             if self.mode == harvestingmode.CONSTANT:
                 return self.energy_per_clock_tick
+
             elif self.mode == harvestingmode.GAUSSIAN:
-                ein = np.random.normal(self.mean, self.mean*self.std)
-                if ein < 0:
-                    ein = 0
+                ein = np.random.normal(self.mean, self.mean * self.std)
+                ein = max(0, ein)  # Ensure non-negative energy
+                logging.debug(f"Gaussian energy harvested: {ein}")
                 return ein
+
             elif self.mode == harvestingmode.FILE:
-                energy_in = 0
-                
-                ## Read a slice of the data
-                ## The slice is the size of the time slot
-                
-                energy_data = self.data[self.offset:(self.offset + int(self.Ts/1e-5))%self.len]
-                energy_data = energy_data * 1e-5
-                energy_in = np.sum(energy_data)
-                # print("Energy in: ", energy_in)
-                self.offset += int(self.Ts/1e-5)
-                self.offset = self.offset % self.len
-                  
-                return energy_in
+                # Validate that data is available
+                if self.data is None or self.len == 0:
+                    logging.error("Energy data file is not initialized or empty.")
+                    return 0
+
+                # Calculate the slice for the current time slot
+                try:
+                    slice_start = self.offset
+                    slice_end = (self.offset + int(self.Ts / 1e-5)) % self.len
+                    energy_data = self.data[slice_start:slice_end] * 1e-5
+                    energy_in = np.sum(energy_data)
+                    #logging.debug(f"File energy harvested: {energy_in}")
+
+
+                    # Update offset
+                    self.offset = slice_end
+                    return energy_in
+
+                except Exception as e:
+                    logging.error(f"Failed to read energy data from file: {e}")
+                    return 0
+
             else:
-                self.logger.error("No harvesting mode set")
+                logging.error("No valid harvesting mode set.")
                 return 0
-            
-            
-        else:
-            self.logger.error("Clock ticks are not in order: " + str(new_tick) + " " + str(self.previous_tick))
+
+        except Exception as e:
+            logging.error(f"Error in get_energy: {e}")
             return 0
+
+

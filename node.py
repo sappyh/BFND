@@ -84,8 +84,8 @@ class Node():
         self.energy_level = self.energy_level + energy_in
 
         ## Change energy to voltage
-        voltage  = math.sqrt(2* self.energy_level / self.capacitance)
-        if voltage < 1.8 and self.ran_once:
+        voltage = math.sqrt(2 * self.energy_level / self.capacitance)
+        if voltage < self.voff and self.ran_once:
             self.reset()
         
         if voltage > self.von:
