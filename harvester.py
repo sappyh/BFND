@@ -13,8 +13,8 @@ import os
 
 # REMOVED: DEFAULT_HDF5_CACHE_SIZE and CachedDataset/DataReader dependencies
 
-# MODIFIED: Reduced Harvester buffer size (in ticks) for lower memory footprint per instance
-DEFAULT_HARVESTER_BUFFER_TICKS = 100 # Was using nominal_runtime (often 1000)
+# MODIFIED: Increased Harvester buffer size (in ticks) to reduce HDF5 disk reads
+DEFAULT_HARVESTER_BUFFER_TICKS = 10000 # Increased from 100 to reduce read frequency
 
 # Enum for harvesting modes
 class harvestingmode(Enum): CONSTANT = 0; GAUSSIAN = 1; FILE = 2
@@ -34,6 +34,7 @@ class Harvester:
         self.nominal_runtime = nominal_runtime
 
         self.clock_publisher = clock_publisher
+        self.hf = None # Persistent HDF5 file handle
         subscriber_topic = f"harvester_clock_sub_{id(self)}"
         self.clock_subscriber = Subscriber(subscriber_topic, self.clock_publisher)
         self.previous_tick = 0
@@ -54,12 +55,19 @@ class Harvester:
              raise ValueError("File path must be provided for FILE harvesting mode.")
 
     def close(self):
-        """ Closes subscriber. """
+        """ Closes subscriber and HDF5 file handle. """
         self.logger.debug("Closing harvester subscriber.")
         if self.clock_subscriber:
              try: self.clock_subscriber.shutdown()
              except Exception as e: self.logger.warning(f"Error shutting subscriber: {e}")
         self.energy_buffer = None # Clear buffer
+        if hasattr(self, 'hf') and self.hf is not None:
+             try:
+                 self.hf.close()
+                 self.logger.debug("Closed HDF5 file handle.")
+             except Exception as e:
+                 self.logger.warning(f"Error closing HDF5 file: {e}")
+             self.hf = None
 
     def set_constant(self, energy_per_clock_tick):
         if self.mode != harvestingmode.CONSTANT: self.logger.warning(f"Setting const params but mode is {self.mode.name}")
@@ -116,7 +124,7 @@ class Harvester:
 
     # --- Modified _load_file_buffer ---
     def _load_file_buffer(self, current_tick):
-        """ Reads a chunk from HDF5 into the internal numpy buffer, handling wrap-around. Opens/closes file each time. """
+        """ Reads a chunk from HDF5 into the internal numpy buffer, handling wrap-around. Opens file once and keeps it open. """
         if self.file_path is None or self.len == 0: # Check length determined during set_file
             self.logger.error(f"Cannot load buffer: file_path ({self.file_path}) or dataset length ({self.len}) invalid.")
             return False
@@ -126,15 +134,15 @@ class Harvester:
 
         slice_start = self.offset
         slice_end = self.offset + samples_to_read
-        hf = None # File handle for this specific load
         try:
-            # Open the HDF5 file for this read operation
-            hf = h5py.File(self.file_path, "r")
+            # Open the HDF5 file once and keep it open
+            if not hasattr(self, 'hf') or self.hf is None:
+                self.hf = h5py.File(self.file_path, "r")
+            
             # Access the dataset directly - assumes node0 for simplicity
-            # TODO: Make node selection configurable if needed
-            if "data" not in hf or "node0" not in hf["data"]:
+            if "data" not in self.hf or "node0" not in self.hf["data"]:
                  raise KeyError("Dataset '/data/node0' not found in HDF5 file during buffer load.")
-            dataset = hf["data"]["node0"]
+            dataset = self.hf["data"]["node0"]
             current_len = len(dataset) # Re-check length in case file changed? Unlikely but safe.
             if current_len != self.len:
                 self.logger.warning(f"HDF5 dataset length changed! Expected {self.len}, got {current_len}. Updating.")
@@ -144,7 +152,6 @@ class Harvester:
                 self.offset %= self.len
                 slice_start = self.offset
                 slice_end = self.offset + samples_to_read
-
 
             # Check for wrap-around using the current length
             if slice_end > self.len:
@@ -175,11 +182,6 @@ class Harvester:
             self.logger.error(f"Failed load energy buffer from HDF5 (path={self.file_path}, start={slice_start}, end={slice_end}): {e}", exc_info=True)
             self.energy_buffer = None
             return False
-        finally:
-            # Ensure the file is closed
-            if hf:
-                try: hf.close()
-                except Exception as close_e: self.logger.warning(f"Error closing HDF5 file in _load_file_buffer: {close_e}")
     # --- End Modified _load_file_buffer ---
 
     def get_energy(self):

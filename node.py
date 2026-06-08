@@ -82,10 +82,8 @@ class Node():
             self.escan = escan # Energy cost for scanning
             self.offset = offset # Preferred advertising slot
             self.channel_map = np.zeros(nominal_time_period) # History of scan successes
-            # Calculate number of scans possible with one charge cycle's energy gain (approx)
-            # Note: This calculation might be approximate. Consider refining if needed.
-            energy_gain_approx = 0.5 * self.capacitance * (self.von**2 - self.voff**2)
-            self.n_scans_per_charge = max(1, int(energy_gain_approx / self.escan)) if self.escan > 0 else 1 # Number of scans to perform per cycle
+            # Calculate number of scans to perform per charge cycle (budgeted to be energy-equivalent to a single advertisement)
+            self.n_scans_per_charge = max(1, int(self.eadv / self.escan)) if self.escan > 0 else 1 # Number of scans to perform per cycle
             self.scans_remaining_this_cycle = 0 # Counter for scans
             self.action_decided_this_cycle = False # Flag for alpha decision
             self.next_adv_wakeup = -1 # Scheduled time for next advertisement
