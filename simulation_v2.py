@@ -322,12 +322,28 @@ def worker_function(sim_num, config_params, run_seed_sequence, log_filepath):
     # --- Worker Logging Setup ---
     worker_logger = logging.getLogger()
     for h in worker_logger.handlers[:]: worker_logger.removeHandler(h)
-    worker_file_handler = logging.FileHandler(log_filepath)
-    worker_file_handler.setLevel(config_params['log_level'])
+    
+    # Avoid lock contention by writing to separate files per worker process
+    base, ext = os.path.splitext(log_filepath)
+    if base.endswith('.log'):
+        base = base[:-4]
+        worker_log_filepath = f"{base}_worker_{os.getpid()}.log.txt"
+    else:
+        worker_log_filepath = f"{base}_worker_{os.getpid()}{ext}"
+
+    worker_file_handler = logging.FileHandler(worker_log_filepath)
+    
+    # Optimize worker logging level: suppress verbose INFO logs in workers to reduce file writes,
+    # unless logging level is explicitly set to DEBUG.
+    worker_log_level = config_params['log_level']
+    if worker_log_level == logging.INFO:
+        worker_log_level = logging.WARNING
+        
+    worker_file_handler.setLevel(worker_log_level)
     worker_formatter = logging.Formatter('%(asctime)s - %(process)d - %(levelname)s - %(name)s - %(message)s')
     worker_file_handler.setFormatter(worker_formatter)
     worker_logger.addHandler(worker_file_handler)
-    worker_logger.setLevel(config_params['log_level'])
+    worker_logger.setLevel(worker_log_level)
 
     # --- Run Simulation ---
     result_ours, result_baseline = 'Error', 'Error'
