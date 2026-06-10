@@ -1,4 +1,4 @@
-from estimator import Kalman_Estimator, PieceWiseEstimator
+from src.estimator import Kalman_Estimator, PieceWiseEstimator
 import numpy as np
 import random
 import collections
@@ -12,7 +12,7 @@ gaussian_generator = np.random.default_rng()
 
 ## Try the estimator
 # estimator = Kalman_Estimator(100)
-estimator= PieceWiseEstimator(0.9, 0.5)
+estimator = PieceWiseEstimator(0.9, 0.5)
 
 estimates = []
 errors = []
