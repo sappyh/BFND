@@ -50,11 +50,17 @@ class Node:
         self.logger.info(f"Initialized Node {self.id}")
 
     def compute_energy_level(self, energy_in):
+        prev_voltage = math.sqrt(max(0.0, 2 * self.energy_level / self.capacitance))
+
         self.energy_level += energy_in
         if self.energy_level < 0:
             self.energy_level = 0.0
 
         voltage = math.sqrt(max(0.0, 2 * self.energy_level / self.capacitance))
+
+        if prev_voltage < self.voff and voltage >= self.voff:
+            if self.protocol:
+                self.protocol.on_voltage_above_voff(self)
 
         if voltage < self.voff and self.ran_once:
             self.reset()

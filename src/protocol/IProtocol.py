@@ -11,6 +11,8 @@ class ProtocolInterface:
         raise NotImplementedError
     def reset(self, node):
         raise NotImplementedError
+    def on_voltage_above_voff(self, node):
+        pass
     def print_stats(self, node):
         raise NotImplementedError
     def get_metrics(self) -> dict:
