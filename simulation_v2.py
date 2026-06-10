@@ -183,9 +183,7 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
             harvester_ours = HarvesterFactory.create_harvester(
                 harvestingmode.CONSTANT, clock_publisher, power=power, log_level=harvester_log_level, nominal_runtime=nominal_runtime
             )
-            harvester_baseline = HarvesterFactory.create_harvester(
-                harvestingmode.CONSTANT, clock_publisher, power=power, log_level=harvester_log_level, nominal_runtime=nominal_runtime
-            )
+            harvester_baseline = harvester_ours
         elif mode_str == 'gaussian':
             cap = node_cfg['capacitance']
             von = node_cfg['von']
@@ -199,21 +197,15 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
             harvester_ours = HarvesterFactory.create_harvester(
                 harvestingmode.GAUSSIAN, clock_publisher, mean=mean_power_per_tick, std=std_dev_per_tick, log_level=harvester_log_level, nominal_runtime=nominal_runtime
             )
-            harvester_baseline = HarvesterFactory.create_harvester(
-                harvestingmode.GAUSSIAN, clock_publisher, mean=mean_power_per_tick, std=std_dev_per_tick, log_level=harvester_log_level, nominal_runtime=nominal_runtime
-            )
+            harvester_baseline = harvester_ours
         elif mode_str == 'file':
             ts_in_file = 1 / current_clock_frequency
-            initial_file_offset_ours = rng.integers(0, 2**31)
-            initial_file_offset_baseline = rng.integers(0, 2**31)
-            logger.info(f"Node pair {i} ('bfnd' harvester) initial file offset: {initial_file_offset_ours}")
-            logger.info(f"Node pair {i} ('find' harvester) initial file offset: {initial_file_offset_baseline}")
+            initial_file_offset = rng.integers(0, 2**31)
+            logger.info(f"Node pair {i} (shared harvester) initial file offset: {initial_file_offset}")
             harvester_ours = HarvesterFactory.create_harvester(
-                harvestingmode.FILE, clock_publisher, file_path=current_file_path, Ts=ts_in_file, initial_offset=initial_file_offset_ours, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=dataset_name
+                harvestingmode.FILE, clock_publisher, file_path=current_file_path, Ts=ts_in_file, initial_offset=initial_file_offset, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=dataset_name
             )
-            harvester_baseline = HarvesterFactory.create_harvester(
-                harvestingmode.FILE, clock_publisher, file_path=current_file_path, Ts=ts_in_file, initial_offset=initial_file_offset_baseline, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=dataset_name
-            )
+            harvester_baseline = harvester_ours
 
         harvesters_ours.append(harvester_ours)
         harvesters_baseline.append(harvester_baseline)
@@ -255,8 +247,7 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
         nodes_ours.append(node_ours)
 
         protocol_baseline = ProtocolFactory.create_protocol(
-            'find',
-            nominal_time_period=nominal_runtime
+            'find'
         )
         node_baseline = (NodeBuilder()
                          .with_id(node_id_baseline)

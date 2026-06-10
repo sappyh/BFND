@@ -43,8 +43,7 @@ def get_optimal_scale(t_chr):
     return 0.0284599 # Default fallback
 
 class Find(ProtocolInterface):
-    def __init__(self, nominal_time_period):
-        self.nominal_time_period = nominal_time_period
+    def __init__(self):
         self.scheduled_advertisement_time = -1
         self.last_turn_off_time = 0
         self.metrics = {}

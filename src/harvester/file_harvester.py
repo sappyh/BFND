@@ -8,7 +8,7 @@ from src.messaging.Subscriber import Subscriber
 DEFAULT_HARVESTER_BUFFER_TICKS = 10000
 
 class FileHarvester(HarvesterInterface):
-    def __init__(self, clock_publisher, file_path=None, log_level=logging.INFO, nominal_runtime=1000, dataset_name="node0"):
+    def __init__(self, clock_publisher, file_path=None, log_level=logging.INFO, dataset_name="node0"):
         self.file_path = file_path
         self.clock_publisher = clock_publisher
         subscriber_topic = f"harvester_clock_sub_{id(self)}"
@@ -20,7 +20,6 @@ class FileHarvester(HarvesterInterface):
         self.len = 0
         self.offset = 0
         self.Ts = 0
-        self.nominal_runtime = nominal_runtime
         self.hf = None
         self.energy_buffer = None
         self.buffer_ptr = 0
@@ -28,6 +27,8 @@ class FileHarvester(HarvesterInterface):
         self.samples_per_tick = 1
         self.buffer_size_ticks = DEFAULT_HARVESTER_BUFFER_TICKS
         self.file_sample_period = 1e-5
+        self.cached_energy = 0.0
+        self.last_tick = -1
 
         if self.file_path is None:
             raise ValueError("File path must be provided for FILE harvesting mode.")
@@ -117,14 +118,18 @@ class FileHarvester(HarvesterInterface):
 
     def get_energy(self):
         try:
-            new_tick = self.clock_subscriber.get_message()
+            new_tick = self.clock_subscriber.get_message() if self.clock_subscriber else None
             if new_tick is None:
-                return 0.0
+                return self.cached_energy
+
+            self.last_tick = new_tick
 
             if self.energy_buffer is None or self.buffer_ptr >= len(self.energy_buffer):
                 if not self._load_file_buffer(new_tick):
+                    self.cached_energy = 0.0
                     return 0.0
                 if self.energy_buffer is None:
+                    self.cached_energy = 0.0
                     return 0.0
 
             try:
@@ -133,8 +138,10 @@ class FileHarvester(HarvesterInterface):
 
                 if buffer_slice_start >= len(self.energy_buffer):
                     if not self._load_file_buffer(new_tick):
+                        self.cached_energy = 0.0
                         return 0.0
                     if self.energy_buffer is None:
+                        self.cached_energy = 0.0
                         return 0.0
                     buffer_slice_start = self.buffer_ptr
                     buffer_slice_end = self.buffer_ptr + self.samples_per_tick
@@ -143,15 +150,18 @@ class FileHarvester(HarvesterInterface):
                     buffer_slice_end = len(self.energy_buffer)
 
                 if buffer_slice_start >= buffer_slice_end:
+                    self.cached_energy = 0.0
                     return 0.0
 
                 energy_data_slice = self.energy_buffer[buffer_slice_start : buffer_slice_end]
                 energy_in = np.sum(energy_data_slice) * self.file_sample_period
                 self.buffer_ptr = buffer_slice_end
+                self.cached_energy = energy_in
                 return energy_in
             except Exception as e:
                 self.logger.error(f"Error processing energy buffer slice: {e}", exc_info=True)
                 self.energy_buffer = None
+                self.cached_energy = 0.0
                 return 0.0
         except Exception as e:
             self.logger.error(f"Critical error in get_energy: {e}", exc_info=True)
@@ -163,6 +173,7 @@ class FileHarvester(HarvesterInterface):
                 self.clock_subscriber.shutdown()
             except Exception as e:
                 self.logger.warning(f"Error shutting subscriber: {e}")
+            self.clock_subscriber = None
         self.energy_buffer = None
         if hasattr(self, 'hf') and self.hf is not None:
             try:

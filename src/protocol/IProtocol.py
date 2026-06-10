@@ -32,8 +32,7 @@ class ProtocolFactory:
             nominal_time_period = kwargs.get('nominal_time_period')
             return BFND(alpha, escan, offset, nominal_time_period)
         elif protocol_type_lower in ('baseline', 'find'):
-            nominal_time_period = kwargs.get('nominal_time_period')
-            return Find(nominal_time_period)
+            return Find()
         else:
             raise ValueError(f"Unknown protocol type: {protocol_type}")
 

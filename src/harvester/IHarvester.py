@@ -21,21 +21,20 @@ class HarvesterFactory:
         from .file_harvester import FileHarvester
 
         log_level = kwargs.get('log_level', logging.INFO)
-        nominal_runtime = kwargs.get('nominal_runtime', 1000)
 
         if mode == harvestingmode.CONSTANT:
             power = kwargs.get('power', 0.0)
-            return ConstantHarvester(clock_publisher, power, log_level, nominal_runtime)
+            return ConstantHarvester(clock_publisher, power, log_level)
         elif mode == harvestingmode.GAUSSIAN:
             mean = kwargs.get('mean', 0.0)
             std = kwargs.get('std', 0.0)
-            return GaussianHarvester(clock_publisher, mean, std, log_level, nominal_runtime)
+            return GaussianHarvester(clock_publisher, mean, std, log_level)
         elif mode == harvestingmode.FILE:
             file_path = kwargs.get('file_path')
             Ts = kwargs.get('Ts', 1e-2)
             initial_offset = kwargs.get('initial_offset', None)
             dataset_name = kwargs.get('dataset_name', 'node0')
-            h = FileHarvester(clock_publisher, file_path, log_level, nominal_runtime, dataset_name=dataset_name)
+            h = FileHarvester(clock_publisher, file_path, log_level, dataset_name=dataset_name)
             h.set_file(Ts, initial_offset)
             return h
         else:
