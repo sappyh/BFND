@@ -31,12 +31,7 @@ node1:
   runtype: normal      # Behavior override for 'ours' protocol (normal, advertising, scanning)
   harvester:
     harvesting_mode: file # constant, gaussian, or file
-    # Power for constant mode (Joules per tick, or 'default')
-    # power: default
-    # Standard deviation factor for gaussian mode (e.g., 0.1 for 10% of mean)
-    # std: 0.1
-    # File path for file mode
-    file: "../Energy_Modelling/pwr_cars.h5"
+    file: "../EnergyTraces/pwr_jogging.h5"
 
 # Configuration for the second node instance of each protocol type
 node2:
@@ -50,7 +45,7 @@ node2:
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../Energy_Modelling/pwr_cars.h5"
+    file: "../EnergyTraces/pwr_jogging.h5"
 
 # Configuration for the third node instance of each protocol type
 node3:
@@ -64,7 +59,7 @@ node3:
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../Energy_Modelling/pwr_cars.h5"
+    file: "../EnergyTraces/pwr_jogging.h5"
 
 # Configuration for the fourth node instance of each protocol type
 node4:
@@ -78,7 +73,7 @@ node4:
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../Energy_Modelling/pwr_cars.h5"
+    file: "../EnergyTraces/pwr_jogging.h5"
 
 # Configuration for the fifth node instance of each protocol type
 node5:
@@ -92,4 +87,4 @@ node5:
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../Energy_Modelling/pwr_cars.h5"
+    file: "../EnergyTraces/pwr_jogging.h5"

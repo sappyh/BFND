@@ -34,7 +34,8 @@ class HarvesterFactory:
             file_path = kwargs.get('file_path')
             Ts = kwargs.get('Ts', 1e-2)
             initial_offset = kwargs.get('initial_offset', None)
-            h = FileHarvester(clock_publisher, file_path, log_level, nominal_runtime)
+            dataset_name = kwargs.get('dataset_name', 'node0')
+            h = FileHarvester(clock_publisher, file_path, log_level, nominal_runtime, dataset_name=dataset_name)
             h.set_file(Ts, initial_offset)
             return h
         else:

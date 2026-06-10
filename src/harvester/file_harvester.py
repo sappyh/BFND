@@ -8,13 +8,14 @@ from src.messaging.Subscriber import Subscriber
 DEFAULT_HARVESTER_BUFFER_TICKS = 10000
 
 class FileHarvester(HarvesterInterface):
-    def __init__(self, clock_publisher, file_path=None, log_level=logging.INFO, nominal_runtime=1000):
+    def __init__(self, clock_publisher, file_path=None, log_level=logging.INFO, nominal_runtime=1000, dataset_name="node0"):
         self.file_path = file_path
         self.clock_publisher = clock_publisher
         subscriber_topic = f"harvester_clock_sub_{id(self)}"
         self.clock_subscriber = Subscriber(subscriber_topic, self.clock_publisher)
         self.logger = logging.getLogger(f"FileHarvester_{id(self)}")
         self.logger.setLevel(log_level)
+        self.dataset_name = dataset_name
         
         self.len = 0
         self.offset = 0
@@ -42,12 +43,12 @@ class FileHarvester(HarvesterInterface):
         temp_hf = None
         try:
             temp_hf = h5py.File(self.file_path, "r")
-            if "data" not in temp_hf or "node0" not in temp_hf["data"]:
-                raise KeyError("Dataset '/data/node0' not found in HDF5 file.")
-            dataset = temp_hf["data"]["node0"]
+            if "data" not in temp_hf or self.dataset_name not in temp_hf["data"]:
+                raise KeyError(f"Dataset '/data/{self.dataset_name}' not found in HDF5 file.")
+            dataset = temp_hf["data"][self.dataset_name]
             self.len = len(dataset)
             if self.len == 0:
-                raise ValueError("Empty dataset '/data/node0'")
+                raise ValueError(f"Empty dataset '/data/{self.dataset_name}'")
 
             if initial_offset is not None:
                 self.offset = initial_offset % self.len
@@ -79,9 +80,9 @@ class FileHarvester(HarvesterInterface):
             if not hasattr(self, 'hf') or self.hf is None:
                 self.hf = h5py.File(self.file_path, "r")
             
-            if "data" not in self.hf or "node0" not in self.hf["data"]:
-                raise KeyError("Dataset '/data/node0' not found in HDF5 file.")
-            dataset = self.hf["data"]["node0"]
+            if "data" not in self.hf or self.dataset_name not in self.hf["data"]:
+                raise KeyError(f"Dataset '/data/{self.dataset_name}' not found in HDF5 file.")
+            dataset = self.hf["data"][self.dataset_name]
             current_len = len(dataset)
             if current_len != self.len:
                 self.len = current_len
