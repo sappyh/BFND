@@ -68,6 +68,10 @@ class Find(ProtocolInterface):
     def on_voltage_above_voff(self, node):
         self.last_turn_off_time = node.ASN
 
+    def on_voltage_above_vmax_thr(self, node):
+        self.scheduled_advertisement_time = node.ASN
+        node.logger.debug(f"Node {node.id} (Find) reached V_MAX_THR, scheduled immediate ADV for ASN {self.scheduled_advertisement_time}")
+
     def decide_action(self, node) -> ACTION:
         if self.scheduled_advertisement_time != -1 and node.ASN == self.scheduled_advertisement_time:
             self.scheduled_advertisement_time = -1

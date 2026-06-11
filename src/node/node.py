@@ -4,7 +4,7 @@ from src.node.enums import ACTION, STATE, RADIO_STATE, RUN_TYPE
 from src.messaging.Subscriber import Subscriber
 
 class Node:
-    def __init__(self, id, energy_harvester, clock, radio, protocol, capacitance, von, voff, eadv, nominal_time_period, rng, runtype=RUN_TYPE.NORMAL, log_level=logging.INFO):
+    def __init__(self, id, energy_harvester, clock, radio, protocol, capacitance, von, voff, eadv, v_max_thr, nominal_time_period, rng, runtype=RUN_TYPE.NORMAL, log_level=logging.INFO):
         self.id = id
         self.energy_harvester = energy_harvester
         # Unique subscriber topic
@@ -19,6 +19,7 @@ class Node:
         self.von = von
         self.voff = voff
         self.eadv = eadv
+        self.v_max_thr = v_max_thr
         self.esleep = 10.5e-9
         self.ebusy_wait = 309e-9
 
@@ -62,6 +63,14 @@ class Node:
         if prev_voltage < self.voff and voltage >= self.voff:
             if self.protocol:
                 self.protocol.on_voltage_above_voff(self)
+
+        if prev_voltage < self.v_max_thr and voltage >= self.v_max_thr:
+            if self.protocol and hasattr(self.protocol, 'on_voltage_above_vmax_thr'):
+                self.protocol.on_voltage_above_vmax_thr(self)
+
+        if prev_voltage > self.von and voltage <= self.von:
+            if self.protocol and hasattr(self.protocol, 'on_voltage_below_von'):
+                self.protocol.on_voltage_below_von(self)
 
         if voltage < self.voff and self.ran_once:
             self.reset()

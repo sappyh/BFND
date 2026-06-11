@@ -24,7 +24,8 @@ node1:
   alpha: 0.7           # Probability of advertising ('ours' protocol)
   capacitance: 47.0e-6 # Capacitor value (Farads)
   von: 3.0             # Turn-on voltage (Volts)
-  voff: 2.4            # Turn-off voltage (Volts)
+  voff: 2.4
+  v_max_thr: 3.3            # Turn-off voltage (Volts)
   eadv: 48.05e-6       # Energy cost of advertisement (Joules)
   escan: 3.0e-6        # Energy cost of scanning ('ours' protocol) (Joules)
   nominal_runtime: 1000 # Nominal time slots for one charge/discharge cycle
@@ -39,6 +40,7 @@ node2:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
+  v_max_thr: 3.3
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000
@@ -53,6 +55,7 @@ node3:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
+  v_max_thr: 3.3
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000
@@ -67,6 +70,7 @@ node4:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
+  v_max_thr: 3.3
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000
@@ -81,6 +85,7 @@ node5:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
+  v_max_thr: 3.3
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000

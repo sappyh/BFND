@@ -14,6 +14,7 @@ class BFND(ProtocolInterface):
         self.scans_remaining_this_cycle = 0
         self.action_decided_this_cycle = False
         self.next_adv_wakeup = -1
+        self.is_scanning_from_vmax = False
         
         self.metrics = {
             "scan_sent": 0,
@@ -30,12 +31,26 @@ class BFND(ProtocolInterface):
         self.action_decided_this_cycle = False
         self.scans_remaining_this_cycle = 0
         self.next_adv_wakeup = -1
+        self.is_scanning_from_vmax = False
 
     def on_turn_off(self, node):
         self.next_adv_wakeup = -1
         self.action_decided_this_cycle = False
+        self.is_scanning_from_vmax = False
+
+    def on_voltage_above_vmax_thr(self, node):
+        self.is_scanning_from_vmax = True
+        node.logger.debug(f"Node {node.id} reached V_MAX_THR, constantly scanning...")
+
+    def on_voltage_below_von(self, node):
+        if self.is_scanning_from_vmax:
+            self.is_scanning_from_vmax = False
+            node.logger.debug(f"Node {node.id} dropped below von, stopped constantly scanning.")
 
     def decide_action(self, node) -> ACTION:
+        if self.is_scanning_from_vmax:
+            return ACTION.SCAN
+
         if not self.action_decided_this_cycle:
             if node.rng.random() < self.alpha:
                 self.scans_remaining_this_cycle = 0
@@ -91,6 +106,7 @@ class BFND(ProtocolInterface):
         self.action_decided_this_cycle = False
         self.scans_remaining_this_cycle = 0
         self.offset = node.rng.integers(0, self.nominal_time_period)
+        self.is_scanning_from_vmax = False
 
     def print_stats(self, node):
         print(f"  Scan Sent: {self.metrics['scan_sent']}")

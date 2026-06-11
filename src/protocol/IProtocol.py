@@ -13,6 +13,10 @@ class ProtocolInterface:
         raise NotImplementedError
     def on_voltage_above_voff(self, node):
         pass
+    def on_voltage_above_vmax_thr(self, node):
+        pass
+    def on_voltage_below_von(self, node):
+        pass
     def print_stats(self, node):
         raise NotImplementedError
     def get_metrics(self) -> dict:
