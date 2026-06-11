@@ -15,12 +15,12 @@ do
     $PYTHON simulation_v2.py config_cars.yaml --dataset $dataset
 done
 
-# Run pwr_jogging.h5 datasets (node0 to node4)
-echo "=== Running Jogging Trace Simulations ==="
+# Run pwr_office.h5 datasets (node0 to node4)
+echo "=== Running Office Trace Simulations ==="
 for dataset in node0 node1 node2 node3 node4
 do
-    echo "Running config_jogging.yaml with --dataset $dataset"
-    $PYTHON simulation_v2.py config_jogging.yaml --dataset $dataset
+    echo "Running config_office.yaml with --dataset $dataset"
+    $PYTHON simulation_v2.py config_office.yaml --dataset $dataset
 done
 
 # Run pwr_stairs.h5 datasets (node0 to node5)
