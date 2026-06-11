@@ -72,7 +72,7 @@ class Find(ProtocolInterface):
         if self.scheduled_advertisement_time != -1 and node.ASN == self.scheduled_advertisement_time:
             self.scheduled_advertisement_time = -1
             return ACTION.ADVERTISE
-        return ACTION.SLEEP
+        return ACTION.BUSY_WAIT
 
     def process_radio_outcome(self, node, radio_outcome):
         if radio_outcome == RADIO_STATE.SUCCESS and node.state == STATE.ON:

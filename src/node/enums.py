@@ -4,6 +4,7 @@ class ACTION(Enum):
     SLEEP = 0
     ADVERTISE = 1
     SCAN = 2
+    BUSY_WAIT = 3
 
 class STATE(Enum):
     ON = 1

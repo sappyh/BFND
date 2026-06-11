@@ -20,6 +20,7 @@ class Node:
         self.voff = voff
         self.eadv = eadv
         self.esleep = 10.5e-9
+        self.ebusy_wait = 309e-9
 
         # --- Timing Parameters ---
         self.nominal_time_period = nominal_time_period
@@ -98,6 +99,10 @@ class Node:
                 self.radio.sleep()
                 if self.ran_once:
                     cost = self.esleep
+            elif action_to_do == ACTION.BUSY_WAIT:
+                self.radio.sleep()
+                if self.ran_once:
+                    cost = self.ebusy_wait
 
             if cost > 0:
                 self.compute_energy_level(-cost)
