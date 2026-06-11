@@ -260,7 +260,8 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
                              capacitance=node_cfg['capacitance'],
                              von=node_cfg['von'],
                              voff=node_cfg['voff'],
-                             eadv=node_cfg['eadv']
+                             eadv=node_cfg['eadv'],
+                             v_max_thr=node_cfg.get('v_max_thr', 3.3)
                          )
                          .with_nominal_time_period(nominal_runtime)
                          .with_rng(rng)
