@@ -1,26 +1,42 @@
+import logging
+
+import numpy as np
+
+
 class ProtocolInterface:
-    def initialize(self, node):
+    def initialize(self):
         raise NotImplementedError
-    def on_turn_on(self, node):
+
+    def on_turn_on(self, asn: int):
         raise NotImplementedError
-    def on_turn_off(self, node):
+
+    def on_turn_off(self, asn: int):
         raise NotImplementedError
-    def decide_action(self, node) -> int:
+
+    def decide_action(self, asn: int, available_energy: float) -> int:
         raise NotImplementedError
-    def process_radio_outcome(self, node, radio_outcome):
+
+    def evaluate_time_step(self, asn: int, radio_outcome, action_taken):
         raise NotImplementedError
-    def reset(self, node):
+
+    def reset(self, asn: int):
         raise NotImplementedError
-    def on_voltage_above_voff(self, node):
+
+    def on_voltage_above_voff(self, asn: int):
         pass
-    def on_voltage_above_vmax_thr(self, node):
+
+    def on_voltage_above_vmax_thr(self, asn: int):
         pass
-    def on_voltage_below_von(self, node):
+
+    def on_voltage_below_von(self, asn: int):
         pass
-    def print_stats(self, node):
+
+    def print_stats(self):
         raise NotImplementedError
+
     def get_metrics(self) -> dict:
         raise NotImplementedError
+
 
 class ProtocolFactory:
     @staticmethod
@@ -31,12 +47,19 @@ class ProtocolFactory:
         protocol_type_lower = protocol_type.lower()
         if protocol_type_lower in ('ours', 'bfnd'):
             alpha = kwargs.get('alpha')
+            eadv = kwargs.get('eadv')
             escan = kwargs.get('escan')
             offset = kwargs.get('offset')
             nominal_time_period = kwargs.get('nominal_time_period')
-            return BFND(alpha, escan, offset, nominal_time_period)
+            node_id = kwargs.get('node_id')
+            rng = kwargs.get('rng')
+            logger = kwargs.get('logger')
+            return BFND(alpha, eadv, escan, offset, nominal_time_period, node_id, rng, logger)
         elif protocol_type_lower in ('baseline', 'find'):
-            return Find()
+            node_id = kwargs.get('node_id')
+            rng = kwargs.get('rng')
+            logger = kwargs.get('logger')
+            nominal_time_period = kwargs.get('nominal_time_period')
+            return Find(node_id, rng, logger, nominal_time_period)
         else:
             raise ValueError(f"Unknown protocol type: {protocol_type}")
-

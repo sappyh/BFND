@@ -219,13 +219,22 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
         shared_node_offset = rng.integers(0, nominal_runtime)
         logger.info(f"Node pair {i}: Shared node offset: {shared_node_offset} for 'bfnd'")
 
+        protocol_logger_ours = logging.getLogger(f"Protocol_BFND_{node_id_ours}")
+        protocol_logger_ours.setLevel(component_log_level)
+        protocol_logger_baseline = logging.getLogger(f"Protocol_Find_{node_id_baseline}")
+        protocol_logger_baseline.setLevel(component_log_level)
+
         # Construct Protocols using factory and Nodes using builder
         protocol_ours = ProtocolFactory.create_protocol(
             'bfnd',
             alpha=node_cfg['alpha'],
+            eadv=node_cfg['eadv'],
             escan=node_cfg['escan'],
             offset=shared_node_offset,
-            nominal_time_period=nominal_runtime
+            nominal_time_period=nominal_runtime,
+            node_id=node_id_ours,
+            rng=rng,
+            logger=protocol_logger_ours,
         )
         node_ours = (NodeBuilder()
                      .with_id(node_id_ours)
@@ -237,6 +246,7 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
                          capacitance=node_cfg['capacitance'],
                          von=node_cfg['von'],
                          voff=node_cfg['voff'],
+                         v_brownout=node_cfg.get('v_brownout', 1.8),
                          eadv=node_cfg['eadv'],
                          v_max_thr=node_cfg.get('v_max_thr', 3.3)
                      )
@@ -248,7 +258,11 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
         nodes_ours.append(node_ours)
 
         protocol_baseline = ProtocolFactory.create_protocol(
-            'find'
+            'find',
+            node_id=node_id_baseline,
+            rng=rng,
+            logger=protocol_logger_baseline,
+            nominal_time_period=nominal_runtime,
         )
         node_baseline = (NodeBuilder()
                          .with_id(node_id_baseline)
@@ -260,6 +274,7 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
                              capacitance=node_cfg['capacitance'],
                              von=node_cfg['von'],
                              voff=node_cfg['voff'],
+                             v_brownout=node_cfg.get('v_brownout', 1.8),
                              eadv=node_cfg['eadv'],
                              v_max_thr=node_cfg.get('v_max_thr', 3.3)
                          )
@@ -330,7 +345,7 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
             radio.subscribe()
             
         for node in all_nodes:
-            node.build_channel_map()
+            node.evaluate_time_step()
 
         if not ours_discovered and nodes_ours[0].metrics['adv_success'] >= current_num_nodes - 1:
             discovery_asn_ours = slot
