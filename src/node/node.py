@@ -43,7 +43,8 @@ class Node:
         # --- Metrics ---
         self.metrics = {
             "adv_sent": 0,
-            "adv_success": 0
+            "adv_success": 0,
+            "discovered_nodes": set()
         }
 
         # Initialize protocol-specific attributes/metrics
@@ -124,9 +125,11 @@ class Node:
             self.radio.sleep()
 
     def evaluate_time_step(self):
-        radio_outcome = self.radio.get_message()
+        radio_outcome, interacted_id = self.radio.get_message()
         if radio_outcome == RADIO_STATE.SUCCESS and self.state == STATE.ON and self.action == ACTION.ADVERTISE:
-            self.metrics["adv_success"] += 1
+            if interacted_id is not None:
+                self.metrics["discovered_nodes"].add(interacted_id)
+                self.metrics["adv_success"] = len(self.metrics["discovered_nodes"])
         if self.protocol:
             self.protocol.evaluate_time_step(self.ASN, radio_outcome, self.action)
 

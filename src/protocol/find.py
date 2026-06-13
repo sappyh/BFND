@@ -85,8 +85,7 @@ class Find(ProtocolInterface):
         return ACTION.BUSY_WAIT
 
     def evaluate_time_step(self, asn: int, radio_outcome, action_taken):
-        if radio_outcome == RADIO_STATE.SUCCESS and action_taken == ACTION.ADVERTISE:
-            pass
+        pass
 
     def reset(self, asn: int):
         self.scheduled_advertisement_time = -1

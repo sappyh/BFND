@@ -29,6 +29,8 @@ import sys
 parser = argparse.ArgumentParser(description="Run Comparative Neighbor Discovery Simulation (BFND vs. Find)")
 parser.add_argument("config_file", help="Path to the YAML configuration file")
 parser.add_argument("--dataset", default="node0", help="Dataset name to use from the trace file (e.g. node0)")
+parser.add_argument("--num_nodes", type=int, default=None, help="Override number of nodes")
+parser.add_argument("--num_simulations", type=int, default=None, help="Override number of simulations")
 args = parser.parse_args()
 config_file = args.config_file
 dataset_name = args.dataset
@@ -85,17 +87,27 @@ main_process_logger.info(f"Initial logging level set to: {log_level_str}")
 
 # --- Get Simulation Parameters & Log ---
 try:
-    NUM_SIMULATIONS = config.get('num_simulations', 100)
+    NUM_SIMULATIONS = args.num_simulations if args.num_simulations is not None else config.get('num_simulations', 100)
     RANDOM_SEED = config.get('random_seed', None)
     CLOCK_FREQUENCY = config.get('clock_frequency', 1000)
     ENERGY_SCALING_FACTOR = config.get('energy_scaling_factor', 1e-2)
     DEFAULT_POWER_FACTOR = config.get('default_power_factor', 0.5)
-    num_nodes_per_protocol = config['num_nodes']
+    num_nodes_per_protocol = args.num_nodes if args.num_nodes is not None else config['num_nodes']
+    config['num_nodes'] = num_nodes_per_protocol
+    if args.num_simulations is not None:
+        config['num_simulations'] = NUM_SIMULATIONS
+
     num_cycles = config['num_cycles']
     nodes_config_template = []
     for i in range(num_nodes_per_protocol):
         node_key = f'node{i + 1}'
         nodes_config_template.append(config[node_key])
+        
+    # Remove unused nodes from config for clean logging
+    for i in range(num_nodes_per_protocol + 1, 10):
+        node_key = f'node{i}'
+        if node_key in config:
+            del config[node_key]
 
     main_process_logger.info(f"--- Simulation Settings ---")
     main_process_logger.info(f"NUM_SIMULATIONS: {NUM_SIMULATIONS}")
@@ -135,8 +147,8 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
     # --- Setup Shared Resources (Clock, Radio Publishers) ---
     clock_publisher = Publisher("clock")
     global_clock = ClockFactory.create_clock(current_clock_frequency, clock_publisher)
-    radio_publisher_ours = Publisher("radio_ours")
-    radio_publisher_baseline = Publisher("radio_baseline")
+    radio_publishers_ours = [Publisher(f"radio_ours_{i}") for i in range(current_num_nodes)]
+    radio_publishers_baseline = [Publisher(f"radio_baseline_{i}") for i in range(current_num_nodes)]
 
     nodes_ours, radios_ours, harvesters_ours = [], [], []
     nodes_baseline, radios_baseline, harvesters_baseline = [], [], []
@@ -285,12 +297,17 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
                          .build())
         nodes_baseline.append(node_baseline)
 
-    # --- Connect Radios ---
+    # --- Connect Radios (Star Topology) ---
     for i in range(current_num_nodes):
-        for j in range(current_num_nodes):
-            if i != j:
-                radios_ours[i].connectto(radios_ours[j], radio_publisher_ours)
-                radios_baseline[i].connectto(radios_baseline[j], radio_publisher_baseline)
+        if i == 0:
+            # Node 0 listens to everyone else
+            for j in range(1, current_num_nodes):
+                radios_ours[0].connectto(radios_ours[j], radio_publishers_ours[j])
+                radios_baseline[0].connectto(radios_baseline[j], radio_publishers_baseline[j])
+        else:
+            # Everyone else ONLY listens to Node 0
+            radios_ours[i].connectto(radios_ours[0], radio_publishers_ours[0])
+            radios_baseline[i].connectto(radios_baseline[0], radio_publishers_baseline[0])
     logger.info("Radios connected.")
 
     return {
@@ -301,8 +318,8 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
         'harvesters_ours': harvesters_ours,
         'harvesters_baseline': harvesters_baseline,
         'global_clock': global_clock,
-        'radio_publisher_ours': radio_publisher_ours,
-        'radio_publisher_baseline': radio_publisher_baseline,
+        'radio_publishers_ours': radio_publishers_ours,
+        'radio_publishers_baseline': radio_publishers_baseline,
         'rng': rng
     }
 
@@ -314,8 +331,8 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
     radios_ours = env['radios_ours']
     radios_baseline = env['radios_baseline']
     global_clock = env['global_clock']
-    radio_publisher_ours = env['radio_publisher_ours']
-    radio_publisher_baseline = env['radio_publisher_baseline']
+    radio_publishers_ours = env['radio_publishers_ours']
+    radio_publishers_baseline = env['radio_publishers_baseline']
 
     discovery_asn_ours = 'N/A'
     discovery_asn_baseline = 'N/A'
@@ -331,15 +348,15 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
         for node in all_nodes:
             node.run_one_time_step()
         
-        for radio in radios_ours:
+        for i, radio in enumerate(radios_ours):
             msg = radio.publish()
             if msg:
-                radio_publisher_ours.publish(msg)
+                radio_publishers_ours[i].publish(msg)
                 
-        for radio in radios_baseline:
+        for i, radio in enumerate(radios_baseline):
             msg = radio.publish()
             if msg:
-                radio_publisher_baseline.publish(msg)
+                radio_publishers_baseline[i].publish(msg)
                 
         for radio in all_radios:
             radio.subscribe()
@@ -555,7 +572,7 @@ async def main_async():
     # --- Save Results ---
     results_dir = f"./results/{sub_dir_name}"
     os.makedirs(results_dir, exist_ok=True)
-    results_filename = f"results_{dataset_name}.tsv"
+    results_filename = f"results_{dataset_name}_{num_nodes_per_protocol}.tsv"
     results_filepath = os.path.join(results_dir, results_filename)
     try:
         with open(results_filepath, "w") as f:

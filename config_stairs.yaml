@@ -1,6 +1,6 @@
 # --- Global Simulation Settings ---
 # Number of simulation runs to execute in parallel
-num_simulations: 1000
+num_simulations: 100
 # Fixed random seed for reproducibility (use null or remove for random seed)
 random_seed: 42
 # Clock ticks per second
@@ -21,7 +21,7 @@ num_cycles: 1000
 # --- Node Specific Settings ---
 # Configuration for the first node instance of each protocol type
 node1:
-  alpha: 0.7           # Probability of advertising ('ours' protocol)
+  alpha: 0.7
   capacitance: 47.0e-6 # Capacitor value (Farads)
   von: 3.0             # Turn-on voltage (Volts)
   voff: 2.4

@@ -43,16 +43,23 @@ class BFND(ProtocolInterface):
         self.scans_remaining_this_cycle = 0
 
     def _enter_advertisement_state(self, asn: int):
-        if np.any(self.channel_map > 0):
-            target_slot = int(np.argmax(self.channel_map))
-        else:
-            target_slot = self.offset
-
         current_slot_in_cycle = asn % self.nominal_time_period
-        if current_slot_in_cycle <= target_slot:
-            delay = target_slot - current_slot_in_cycle
-        else:
-            delay = self.nominal_time_period - current_slot_in_cycle + target_slot
+
+        candidate_slots = [self.offset]
+        if np.any(self.channel_map > 0):
+            non_zero_slots = np.where(self.channel_map > 0)[0]
+            candidate_slots.extend(non_zero_slots)
+
+        candidate_slots = np.array(candidate_slots)
+        delays = (candidate_slots - current_slot_in_cycle) % self.nominal_time_period
+        
+        # argmin returns the first occurrence of the minimum, so if multiple slots tie, 
+        # it will pick the first one (self.offset is at index 0)
+        target_slot = int(candidate_slots[np.argmin(delays)])
+        delay = int(np.min(delays))
+
+        if delay == 0:
+            delay = self.nominal_time_period
 
 
         self.next_adv_wakeup = asn + delay

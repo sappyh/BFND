@@ -42,7 +42,7 @@ class SimpleRadio(RadioInterface):
     def __init__(self, loglevel=logging.INFO):
         self.transmit_message = None
         self.transmitted_message = None
-        self.subscriber = None
+        self.subscribers = []
         self.subscribe_done = False
         self.receive_message_outcome = RADIO_STATE.FAILURE
         self.logger = logging.getLogger(f"Radio_{id(self)}")
@@ -50,12 +50,10 @@ class SimpleRadio(RadioInterface):
         self.logger.disabled = True
 
     def connectto(self, other_radio, publisher_to_subscribe_to):
-        if self.subscriber is None:
-            subscriber_topic = f"radio_sub_{id(self)}_listens_{publisher_to_subscribe_to.topic}"
-            self.subscriber = Subscriber(subscriber_topic, publisher_to_subscribe_to)
-            self.logger.debug(f"Radio {id(self)} connected subscriber to {publisher_to_subscribe_to.topic}")
-        else:
-            self.logger.warning(f"Radio {id(self)}: connectto called but subscriber already exists. Ignoring.")
+        subscriber_topic = f"radio_sub_{id(self)}_listens_{publisher_to_subscribe_to.topic}"
+        sub = Subscriber(subscriber_topic, publisher_to_subscribe_to)
+        self.subscribers.append(sub)
+        self.logger.debug(f"Radio {id(self)} connected subscriber to {publisher_to_subscribe_to.topic}")
 
     def advertise(self, asn, nodeID):
         self.logger.debug(f"Node {nodeID} preparing ADV for ASN {asn}")
@@ -77,17 +75,20 @@ class SimpleRadio(RadioInterface):
         if self.subscribe_done:
             self.subscribe_done = False
             outcome = self.receive_message_outcome
+            interacted_id = getattr(self, 'last_interacted_node_id', None)
             self.transmitted_message = None
             self.receive_message_outcome = RADIO_STATE.FAILURE
-            return outcome
+            self.last_interacted_node_id = None
+            return outcome, interacted_id
         else:
             self.logger.warning(f"Radio {id(self)}: get_message called before subscribe step completed.")
-            return RADIO_STATE.FAILURE
+            return RADIO_STATE.FAILURE, None
 
     def sleep(self):
         self.transmit_message = None
         self.transmitted_message = None
         self.receive_message_outcome = RADIO_STATE.FAILURE
+        self.last_interacted_node_id = None
 
     def publish(self):
         if self.transmit_message is not None:
@@ -98,17 +99,20 @@ class SimpleRadio(RadioInterface):
         return None
 
     def subscribe(self):
-        if self.subscriber is None:
+        if not self.subscribers:
             self.logger.error(f"Radio {id(self)}: Subscribe called but not connected to any publisher.")
             self.subscribe_done = True
             return
 
-        n_messages = self.subscriber.get_number_of_messages()
         received_messages = []
-        for _ in range(n_messages):
-            msg = self.subscriber.get_message()
-            if msg:
-                received_messages.append(msg)
+        for sub in self.subscribers:
+            n_msgs = sub.get_number_of_messages()
+            for _ in range(n_msgs):
+                msg = sub.get_message()
+                if msg:
+                    received_messages.append(msg)
+                    
+        n_messages = len(received_messages)
 
         current_outcome = RADIO_STATE.FAILURE
 
@@ -119,6 +123,7 @@ class SimpleRadio(RadioInterface):
                 current_outcome = self.transmitted_message.check_message(received_messages[0])
                 if current_outcome == RADIO_STATE.SUCCESS:
                     self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction with Node {received_messages[0].nodeID} at ASN {self.transmitted_message.ASN}")
+                    self.last_interacted_node_id = received_messages[0].nodeID
             else:
                 self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Interference detected ({n_messages} messages) at ASN {self.transmitted_message.ASN}")
                 current_outcome = RADIO_STATE.FAILURE
