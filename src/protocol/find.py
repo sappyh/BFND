@@ -30,8 +30,11 @@ scale_table = [
 
 
 def get_optimal_scale(t_chr):
-    if t_chr >= scale_table[0][0]:
-        return scale_table[0][1]
+    if t_chr > scale_table[0][0]:
+        # Extrapolate for large charging times (required for 1ms overlap window abstraction)
+        # Fit: p = a * t_chr^b where a = 2.2896, b = -0.62955
+        return 2.2896 * (t_chr ** -0.62955)
+    
     if t_chr <= scale_table[-1][0]:
         return scale_table[-1][1]
 
