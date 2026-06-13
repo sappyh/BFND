@@ -39,7 +39,8 @@ class RadioMessage:
 radioMessage = RadioMessage
 
 class SimpleRadio(RadioInterface):
-    def __init__(self, loglevel=logging.INFO):
+    def __init__(self, publisher=None, loglevel=logging.INFO):
+        self.publisher = publisher
         self.transmit_message = None
         self.transmitted_message = None
         self.subscribers = []
@@ -49,11 +50,18 @@ class SimpleRadio(RadioInterface):
         self.logger.setLevel(loglevel)
         self.logger.disabled = True
 
-    def connectto(self, other_radio, publisher_to_subscribe_to):
-        subscriber_topic = f"radio_sub_{id(self)}_listens_{publisher_to_subscribe_to.topic}"
-        sub = Subscriber(subscriber_topic, publisher_to_subscribe_to)
-        self.subscribers.append(sub)
-        self.logger.debug(f"Radio {id(self)} connected subscriber to {publisher_to_subscribe_to.topic}")
+    def connectto(self, other_radio):
+        # I listen to other_radio
+        if other_radio.publisher:
+            sub1 = Subscriber("NBDiscovery", other_radio.publisher)
+            self.subscribers.append(sub1)
+            self.logger.debug(f"Radio {id(self)} connected subscriber to NBDiscovery")
+        
+        # other_radio listens to me
+        if self.publisher:
+            sub2 = Subscriber("NBDiscovery", self.publisher)
+            other_radio.subscribers.append(sub2)
+            other_radio.logger.debug(f"Radio {id(other_radio)} connected subscriber to NBDiscovery")
 
     def advertise(self, asn, nodeID):
         self.logger.debug(f"Node {nodeID} preparing ADV for ASN {asn}")
@@ -95,6 +103,8 @@ class SimpleRadio(RadioInterface):
             msg_to_send = self.transmit_message
             self.transmitted_message = msg_to_send
             self.transmit_message = None
+            if self.publisher:
+                self.publisher.publish(msg_to_send)
             return msg_to_send
         return None
 
@@ -122,11 +132,21 @@ class SimpleRadio(RadioInterface):
             elif n_messages == 1:
                 current_outcome = self.transmitted_message.check_message(received_messages[0])
                 if current_outcome == RADIO_STATE.SUCCESS:
-                    self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction with Node {received_messages[0].nodeID} at ASN {self.transmitted_message.ASN}")
-                    self.last_interacted_node_id = received_messages[0].nodeID
+                    if self.transmitted_message.radioEvent == RadioEvent.ADVERTISE:
+                        self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction with Node {received_messages[0].nodeID} at ASN {self.transmitted_message.ASN}")
+                        self.last_interacted_node_id = received_messages[0].nodeID
+                    else:
+                        self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction (Energy Detected) at ASN {self.transmitted_message.ASN}")
+                        self.last_interacted_node_id = None
             else:
-                self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Interference detected ({n_messages} messages) at ASN {self.transmitted_message.ASN}")
-                current_outcome = RADIO_STATE.FAILURE
+                ## Multiple messages is allowed with Scan 
+                if self.transmitted_message.radioEvent == RadioEvent.ADVERTISE:
+                    self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Interference detected ({n_messages} messages) at ASN {self.transmitted_message.ASN}")
+                    current_outcome = RADIO_STATE.FAILURE
+                else:
+                    self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction (Energy Detected) at ASN {self.transmitted_message.ASN}")
+                    current_outcome = RADIO_STATE.SUCCESS
+                    self.last_interacted_node_id = None
 
         self.receive_message_outcome = current_outcome
         self.subscribe_done = True

@@ -1,7 +1,7 @@
 import logging
 
 class RadioInterface:
-    def connectto(self, other_radio, publisher_to_subscribe_to):
+    def connectto(self, other_radio):
         raise NotImplementedError
 
     def advertise(self, asn, node_id):
@@ -24,6 +24,6 @@ class RadioInterface:
 
 class RadioFactory:
     @staticmethod
-    def create_radio(log_level=logging.INFO):
+    def create_radio(publisher=None, log_level=logging.INFO):
         from .simple_radio import SimpleRadio
-        return SimpleRadio(log_level)
+        return SimpleRadio(publisher, log_level)

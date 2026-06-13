@@ -147,8 +147,8 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
     # --- Setup Shared Resources (Clock, Radio Publishers) ---
     clock_publisher = Publisher("clock")
     global_clock = ClockFactory.create_clock(current_clock_frequency, clock_publisher)
-    radio_publishers_ours = [Publisher(f"radio_ours_{i}") for i in range(current_num_nodes)]
-    radio_publishers_baseline = [Publisher(f"radio_baseline_{i}") for i in range(current_num_nodes)]
+    radio_publishers_ours = [Publisher("NBDiscovery") for i in range(current_num_nodes)]
+    radio_publishers_baseline = [Publisher("NBDiscovery") for i in range(current_num_nodes)]
 
     nodes_ours, radios_ours, harvesters_ours = [], [], []
     nodes_baseline, radios_baseline, harvesters_baseline = [], [], []
@@ -223,9 +223,9 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
         harvesters_baseline.append(harvester_baseline)
 
         # Create Radios using factory
-        radio_ours = RadioFactory.create_radio(log_level=component_log_level)
+        radio_ours = RadioFactory.create_radio(publisher=radio_publishers_ours[i], log_level=component_log_level)
         radios_ours.append(radio_ours)
-        radio_baseline = RadioFactory.create_radio(log_level=component_log_level)
+        radio_baseline = RadioFactory.create_radio(publisher=radio_publishers_baseline[i], log_level=component_log_level)
         radios_baseline.append(radio_baseline)
 
         shared_node_offset = rng.integers(0, nominal_runtime)
@@ -298,16 +298,10 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
         nodes_baseline.append(node_baseline)
 
     # --- Connect Radios (Star Topology) ---
-    for i in range(current_num_nodes):
-        if i == 0:
-            # Node 0 listens to everyone else
-            for j in range(1, current_num_nodes):
-                radios_ours[0].connectto(radios_ours[j], radio_publishers_ours[j])
-                radios_baseline[0].connectto(radios_baseline[j], radio_publishers_baseline[j])
-        else:
-            # Everyone else ONLY listens to Node 0
-            radios_ours[i].connectto(radios_ours[0], radio_publishers_ours[0])
-            radios_baseline[i].connectto(radios_baseline[0], radio_publishers_baseline[0])
+    # Node 0 connects to all other nodes bidirectionally.
+    for j in range(1, current_num_nodes):
+        radios_ours[0].connectto(radios_ours[j])
+        radios_baseline[0].connectto(radios_baseline[j])
     logger.info("Radios connected.")
 
     return {
@@ -348,15 +342,11 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
         for node in all_nodes:
             node.run_one_time_step()
         
-        for i, radio in enumerate(radios_ours):
-            msg = radio.publish()
-            if msg:
-                radio_publishers_ours[i].publish(msg)
+        for radio in radios_ours:
+            radio.publish()
                 
-        for i, radio in enumerate(radios_baseline):
-            msg = radio.publish()
-            if msg:
-                radio_publishers_baseline[i].publish(msg)
+        for radio in radios_baseline:
+            radio.publish()
                 
         for radio in all_radios:
             radio.subscribe()
