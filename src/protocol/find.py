@@ -1,6 +1,7 @@
 from src.node.enums import ACTION, RADIO_STATE
 from src.protocol.IProtocol import ProtocolInterface
 from enum import Enum
+import math
 
 # Look up table from paper as implemented in BFND_CPP
 scale_table = [
@@ -30,22 +31,36 @@ scale_table = [
 ]
 
 
-def get_optimal_scale(t_chr):
-    if t_chr > scale_table[0][0]:
-        # Extrapolate for large charging times (required for 1ms overlap window abstraction)
-        # Fit: p = a * t_chr^b where a = 2.2896, b = -0.62955
-        return 2.2896 * (t_chr ** -0.62955)
-    
-    if t_chr <= scale_table[-1][0]:
-        return scale_table[-1][1]
+scale_tab = [0.0] * 257
+for i in range(257):
+    t_chr = (i + 1) * 10
+    for j in range(len(scale_table) - 1):
+        if scale_table[j + 1][0] <= t_chr <= scale_table[j][0]:
+            x0, y0 = scale_table[j]
+            x1, y1 = scale_table[j + 1]
+            scale_tab[i] = y0 + (t_chr - x0) * (y1 - y0) / (x1 - x0)
+            break
 
-    for i in range(len(scale_table) - 1):
-        if scale_table[i + 1][0] <= t_chr <= scale_table[i][0]:
-            x0, y0 = scale_table[i]
-            x1, y1 = scale_table[i + 1]
-            return y0 + (t_chr - x0) * (y1 - y0) / (x1 - x0)
+def lookup_scale(t_chr: int) -> float:
+    if t_chr < 10:
+        return scale_tab[0]
+    elif t_chr > 2560:
+        return scale_tab[255]
 
-    return 0.0284599
+    idx_low = (t_chr // 10) - 1
+    val_low = scale_tab[idx_low]
+    val_high = scale_tab[t_chr // 10]
+    frac = (t_chr % 10) / 10.0
+    return val_low + frac * (val_high - val_low)
+
+def geometric_itf_sample(p: float, rng) -> int:
+    y = rng.integers(0, 4096) / 4096.0
+    p_clamped = min(0.999999, p)
+    res_float = math.log(1.0 - y) / math.log(1.0 - p_clamped) - 1.0
+    res = int(res_float)
+    if res < 0:
+        res = 0
+    return res
 
 
 
@@ -69,11 +84,10 @@ class Find(ProtocolInterface):
 
     def on_turn_on(self, asn: int):
         current_t_chr = asn if self.last_turn_off_time == 0 else (asn - self.last_turn_off_time)
-        p = get_optimal_scale(current_t_chr)
-        delay = self.rng.geometric(p) - 1
+        delay = geometric_itf_sample(lookup_scale(current_t_chr), self.rng)
         self.scheduled_advertisement_time = asn + delay
         self.logger.debug(
-            f"Node {self.node_id} (Find) scheduled ADV for ASN {self.scheduled_advertisement_time} (delay={delay}, p={p})"
+            f"Node {self.node_id} (Find) scheduled ADV for ASN {self.scheduled_advertisement_time} (delay={delay})"
         )
         self.state = FindState.ADVERTISEMENT
 

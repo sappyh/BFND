@@ -1,6 +1,7 @@
+protocol: bfnd
 # --- Global Simulation Settings ---
 # Number of simulation runs to execute in parallel
-num_simulations: 1
+num_simulations: 100
 # Fixed random seed for reproducibility (use null or remove for random seed)
 random_seed: 42
 # Clock ticks per second
@@ -10,7 +11,7 @@ energy_scaling_factor: 1e-2
 # Default power factor used for calculating energy needs if 'power: default' is set
 default_power_factor: 0.5
 # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-log_level: DEBUG
+log_level: INFO
 
 # --- Per-Protocol Settings ---
 # Number of nodes for EACH protocol (e.g., 5 'ours' and 5 'baseline')

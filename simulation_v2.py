@@ -27,21 +27,25 @@ import sys
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Run Comparative Neighbor Discovery Simulation (BFND vs. Find)")
-parser.add_argument("--config", required=True, help="Path to the configuration YAML file (e.g. config_office.yaml)")
+parser.add_argument("configs", nargs='+', help="Paths to configuration YAML files (e.g. config1.yaml config2.yaml)")
 parser.add_argument("--num_nodes", type=int, default=None, help="Override number of nodes per protocol")
 parser.add_argument("--num_simulations", type=int, default=None, help="Override number of simulations")
 args = parser.parse_args()
-config_file = args.config
+config_files = args.configs
+config_file = config_files[0]
 
 # --- Load Configuration ---
+configs = []
 try:
-    with open(config_file, 'r') as stream:
-        config = yaml.load(stream, Loader=yaml.FullLoader)
-except FileNotFoundError:
-    print(f"FATAL ERROR: Config file '{config_file}' not found.")
+    for c_file in config_files:
+        with open(c_file, 'r') as stream:
+            configs.append(yaml.load(stream, Loader=yaml.FullLoader))
+    config = configs[0]
+except FileNotFoundError as e:
+    print(f"FATAL ERROR: Config file not found: {e}")
     exit(1)
 except yaml.YAMLError as exc:
-    print(f"FATAL ERROR: Parsing YAML '{config_file}': {exc}")
+    print(f"FATAL ERROR: Parsing YAML: {exc}")
     exit(1)
 except Exception as e:
     print(f"FATAL ERROR: Loading config: {e}")
@@ -97,16 +101,20 @@ try:
         config['num_simulations'] = NUM_SIMULATIONS
 
     num_cycles = config['num_cycles']
-    nodes_config_template = []
-    for i in range(num_nodes_per_protocol):
-        node_key = f'node{i + 1}'
-        nodes_config_template.append(config[node_key])
+    nodes_config_templates = []
+    for c in configs:
+        nodes_cfg = []
+        for i in range(num_nodes_per_protocol):
+            node_key = f'node{i + 1}'
+            nodes_cfg.append(c[node_key])
+        nodes_config_templates.append(nodes_cfg)
         
     # Remove unused nodes from config for clean logging
-    for i in range(num_nodes_per_protocol + 1, 10):
-        node_key = f'node{i}'
-        if node_key in config:
-            del config[node_key]
+    for c in configs:
+        for i in range(num_nodes_per_protocol + 1, 10):
+            node_key = f'node{i}'
+            if node_key in c:
+                del c[node_key]
 
     main_process_logger.info(f"--- Simulation Settings ---")
     main_process_logger.info(f"NUM_SIMULATIONS: {NUM_SIMULATIONS}")
@@ -125,62 +133,75 @@ except KeyError as e:
 except Exception as e:
     main_process_logger.error(f"Error reading parameters: {e}")
     exit(1)
-
+config_params_for_worker = {
+    'clock_frequency': CLOCK_FREQUENCY,
+    'num_nodes': num_nodes_per_protocol,
+    'nodes_config_templates': nodes_config_templates,
+    'configs': configs,
+    'config_names': [os.path.basename(c).replace('.yaml', '') for c in config_files],
+    'num_cycles': num_cycles,
+    'energy_scaling_factor': ENERGY_SCALING_FACTOR,
+    'default_power_factor': DEFAULT_POWER_FACTOR,
+    'log_level': log_level
+}
 
 def setup_simulation_environment(config_params, run_seed_sequence, logger):
-    """ Sets up the simulation environment: RNG, clock, publishers, nodes, harvesters, radios, protocols. """
     current_clock_frequency = config_params['clock_frequency']
     current_num_nodes = config_params['num_nodes']
-    current_nodes_config = config_params['nodes_config']
+    nodes_config_templates = config_params['nodes_config_templates']
+    configs = config_params['configs']
     current_default_power = config_params['default_power_factor']
 
-    # --- Seed RNGs ---
     if run_seed_sequence is not None:
-        logger.info(f"Seeding RNGs with SeedSequence entropy: {run_seed_sequence.entropy}")
         random.seed(run_seed_sequence.entropy)
         rng = default_rng(run_seed_sequence)
     else:
-        logger.info("No specific run seed sequence provided, using system time/entropy.")
         rng = default_rng()
 
-    # --- Setup Shared Resources (Clock, Radio Publishers) ---
     clock_publisher = Publisher("clock")
     global_clock = ClockFactory.create_clock(current_clock_frequency, clock_publisher)
-    radio_publishers_ours = [Publisher("NBDiscovery") for i in range(current_num_nodes)]
-    radio_publishers_baseline = [Publisher("NBDiscovery") for i in range(current_num_nodes)]
-
-    nodes_ours, radios_ours, harvesters_ours = [], [], []
-    nodes_baseline, radios_baseline, harvesters_baseline = [], [], []
+    
+    shared_harvesters = []
+    shared_node_offsets = []
+    
+    nominal_runtime_first_node = nodes_config_templates[0][0].get("nominal_runtime", 1000)
+    c0_nodes_cfg = nodes_config_templates[0]
+    file_path_to_use = None
+    for node_cfg in c0_nodes_cfg:
+        if node_cfg.get('harvester', {}).get('harvesting_mode', '').lower() == 'file':
+            file_path_to_use = node_cfg.get('harvester', {}).get('file')
+            break
+            
+    shared_initial_file_offset = None
+    if file_path_to_use:
+        try:
+            with h5py.File(file_path_to_use, 'r') as f:
+                ts_in_file = 1 / current_clock_frequency
+                samples_per_slot = 1
+                if 'time' in f:
+                    time_data = f['time']
+                    if len(time_data) > 1:
+                        ts_in_file = time_data[1] - time_data[0]
+                        samples_per_slot = int(round((1 / current_clock_frequency) / ts_in_file))
+                        samples_per_slot = max(1, samples_per_slot)
+                
+                dataset_length = len(f['data']['node0'])
+                max_offset_samples = max(0, dataset_length - (nominal_runtime_first_node * samples_per_slot * config_params['num_cycles']))
+                shared_initial_file_offset = rng.integers(0, max_offset_samples + 1)
+        except Exception as e:
+            logger.warning(f"Could not determine dataset length for initial offset: {e}")
+            shared_initial_file_offset = 0
 
     component_log_level = logging.DEBUG if config_params['log_level'] == logging.DEBUG else logging.WARNING
     harvester_log_level = component_log_level
 
-    file_path_to_use = None
-    file_mode_needed = False
-    for node_cfg_check in current_nodes_config:
-         harvester_cfg_check = node_cfg_check.get('harvester', {})
-         if harvester_cfg_check.get('harvesting_mode', '').lower() == 'file':
-              file_mode_needed = True
-              file_path_to_use = harvester_cfg_check.get('file')
-              if not file_path_to_use:
-                  raise ValueError("File mode specified but no file path.")
-              break
-
-    if file_mode_needed:
-         logger.info(f"File mode detected. Harvesters will use data from: {file_path_to_use}")
-
-    shared_initial_file_offset = rng.integers(0, 2**31)
-
     for i in range(current_num_nodes):
-        node_cfg = current_nodes_config[i]
-        node_id_ours = i
-        node_id_baseline = i + current_num_nodes
+        node_cfg = c0_nodes_cfg[i]
         nominal_runtime = node_cfg.get('nominal_runtime', 1000)
         harvester_cfg = node_cfg.get('harvester', {})
         mode_str = harvester_cfg.get('harvesting_mode', 'constant').lower()
-        current_file_path = file_path_to_use if mode_str == 'file' else None
-
-        # Harvester creation using factory
+        
+        harvester = None
         if mode_str == 'constant':
             power = harvester_cfg.get('power', 'default')
             if power == 'default':
@@ -193,10 +214,9 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
                 power = default_power_watts / current_clock_frequency if current_clock_frequency > 0 else 0
             else:
                 power = float(power)
-            harvester_ours = HarvesterFactory.create_harvester(
+            harvester = HarvesterFactory.create_harvester(
                 harvestingmode.CONSTANT, clock_publisher, power=power, log_level=harvester_log_level, nominal_runtime=nominal_runtime
             )
-            harvester_baseline = harvester_ours
         elif mode_str == 'gaussian':
             cap = node_cfg['capacitance']
             von = node_cfg['von']
@@ -207,82 +227,58 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
             mean_power_per_tick = default_power_watts / current_clock_frequency if current_clock_frequency > 0 else 0
             std_dev_factor = float(harvester_cfg.get('std', 0.1))
             std_dev_per_tick = std_dev_factor * mean_power_per_tick
-            harvester_ours = HarvesterFactory.create_harvester(
+            harvester = HarvesterFactory.create_harvester(
                 harvestingmode.GAUSSIAN, clock_publisher, mean=mean_power_per_tick, std=std_dev_per_tick, log_level=harvester_log_level, nominal_runtime=nominal_runtime
             )
-            harvester_baseline = harvester_ours
         elif mode_str == 'file':
             ts_in_file = 1 / current_clock_frequency
             node_dataset_name = f"node{i}"
-            logger.info(f"Node pair {i} (shared harvester) dataset: {node_dataset_name}, shared initial file offset: {shared_initial_file_offset}")
-            harvester_ours = HarvesterFactory.create_harvester(
-                harvestingmode.FILE, clock_publisher, file_path=current_file_path, Ts=ts_in_file, initial_offset=shared_initial_file_offset, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=node_dataset_name
+            harvester = HarvesterFactory.create_harvester(
+                harvestingmode.FILE, clock_publisher, file_path=file_path_to_use, Ts=ts_in_file, initial_offset=shared_initial_file_offset, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=node_dataset_name
             )
-            harvester_baseline = harvester_ours
+        shared_harvesters.append(harvester)
+        shared_node_offsets.append(rng.integers(0, nominal_runtime))
 
-        harvesters_ours.append(harvester_ours)
-        harvesters_baseline.append(harvester_baseline)
-
-        # Create Radios using factory
-        radio_ours = RadioFactory.create_radio(publisher=radio_publishers_ours[i], log_level=component_log_level)
-        radios_ours.append(radio_ours)
-        radio_baseline = RadioFactory.create_radio(publisher=radio_publishers_baseline[i], log_level=component_log_level)
-        radios_baseline.append(radio_baseline)
-
-        shared_node_offset = rng.integers(0, nominal_runtime)
-        logger.info(f"Node pair {i}: Shared node offset: {shared_node_offset} for 'bfnd'")
-
-        protocol_logger_ours = logging.getLogger(f"Protocol_BFND_{node_id_ours}")
-        protocol_logger_ours.setLevel(component_log_level)
-        protocol_logger_baseline = logging.getLogger(f"Protocol_Find_{node_id_baseline}")
-        protocol_logger_baseline.setLevel(component_log_level)
-
-        # Construct Protocols using factory and Nodes using builder
-        protocol_ours = ProtocolFactory.create_protocol(
-            'bfnd',
-            alpha=node_cfg['alpha'],
-            eadv=node_cfg['eadv'],
-            escan=node_cfg['escan'],
-            offset=shared_node_offset,
-            nominal_time_period=nominal_runtime,
-            node_id=node_id_ours,
-            rng=rng,
-            logger=protocol_logger_ours,
-        )
-        node_ours = (NodeBuilder()
-                     .with_id(node_id_ours)
-                     .with_energy_harvester(harvester_ours)
-                     .with_clock(clock_publisher)
-                     .with_radio(radio_ours)
-                     .with_protocol(protocol_ours)
-                     .with_energy_parameters(
-                         capacitance=node_cfg['capacitance'],
-                         von=node_cfg['von'],
-                         voff=node_cfg['voff'],
-                         v_brownout=node_cfg.get('v_brownout', 1.8),
-                         eadv=node_cfg['eadv'],
-                         v_max_thr=node_cfg.get('v_max_thr', 3.3)
-                     )
-                     .with_nominal_time_period(nominal_runtime)
-                     .with_rng(rng)
-                     .with_runtype(RUN_TYPE[node_cfg.get('runtype', 'normal').upper()])
-                     .with_log_level(component_log_level)
-                     .build())
-        nodes_ours.append(node_ours)
-
-        protocol_baseline = ProtocolFactory.create_protocol(
-            'find',
-            node_id=node_id_baseline,
-            rng=rng,
-            logger=protocol_logger_baseline,
-            nominal_time_period=nominal_runtime,
-        )
-        node_baseline = (NodeBuilder()
-                         .with_id(node_id_baseline)
-                         .with_energy_harvester(harvester_baseline)
+    networks = []
+    for k, config_dict in enumerate(configs):
+        protocol_name = config_dict.get('protocol', 'find').lower()
+        network_nodes = []
+        network_radios = []
+        network_publishers = [Publisher(f"NBDiscovery_{k}_{i}") for i in range(current_num_nodes)]
+        nodes_cfg = nodes_config_templates[k]
+        
+        for i in range(current_num_nodes):
+            node_cfg = nodes_cfg[i]
+            nominal_runtime = node_cfg.get('nominal_runtime', 1000)
+            node_id = k * current_num_nodes + i
+            
+            harvester = shared_harvesters[i]
+            shared_node_offset = shared_node_offsets[i]
+            
+            radio = RadioFactory.create_radio(publisher=network_publishers[i], log_level=component_log_level)
+            network_radios.append(radio)
+            
+            protocol_logger = logging.getLogger(f"Protocol_{protocol_name}_{node_id}")
+            protocol_logger.setLevel(component_log_level)
+            
+            protocol = ProtocolFactory.create_protocol(
+                protocol_name,
+                alpha=node_cfg.get('alpha', 0.5),
+                eadv=node_cfg.get('eadv', 0),
+                escan=node_cfg.get('escan', 0),
+                offset=shared_node_offset,
+                nominal_time_period=nominal_runtime,
+                node_id=node_id,
+                rng=rng,
+                logger=protocol_logger,
+            )
+            
+            node = (NodeBuilder()
+                         .with_id(node_id)
+                         .with_energy_harvester(harvester)
                          .with_clock(clock_publisher)
-                         .with_radio(radio_baseline)
-                         .with_protocol(protocol_baseline)
+                         .with_radio(radio)
+                         .with_protocol(protocol)
                          .with_energy_parameters(
                              capacitance=node_cfg['capacitance'],
                              von=node_cfg['von'],
@@ -293,60 +289,51 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
                          )
                          .with_nominal_time_period(nominal_runtime)
                          .with_rng(rng)
-                         .with_runtype(RUN_TYPE.NORMAL)
+                         .with_runtype(RUN_TYPE[node_cfg.get('runtype', 'normal').upper()])
                          .with_log_level(component_log_level)
                          .build())
-        nodes_baseline.append(node_baseline)
-
-    # --- Connect Radios (Star Topology) ---
-    # Node 0 connects to all other nodes bidirectionally.
-    for j in range(1, current_num_nodes):
-        radios_ours[0].connectto(radios_ours[j])
-        radios_baseline[0].connectto(radios_baseline[j])
-    logger.info("Radios connected.")
-
+            network_nodes.append(node)
+            
+        for j in range(1, current_num_nodes):
+            network_radios[0].connectto(network_radios[j])
+            
+        networks.append({
+            'nodes': network_nodes,
+            'radios': network_radios,
+            'publishers': network_publishers,
+            'protocol_name': protocol_name,
+            'config_name': config_params['config_names'][k]
+        })
+        
     return {
-        'nodes_ours': nodes_ours,
-        'nodes_baseline': nodes_baseline,
-        'radios_ours': radios_ours,
-        'radios_baseline': radios_baseline,
-        'harvesters_ours': harvesters_ours,
-        'harvesters_baseline': harvesters_baseline,
+        'networks': networks,
         'global_clock': global_clock,
-        'radio_publishers_ours': radio_publishers_ours,
-        'radio_publishers_baseline': radio_publishers_baseline,
+        'shared_harvesters': shared_harvesters,
         'rng': rng
     }
 
-
 def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
-    """ Runs the tick-by-tick simulation loop and checks for node discovery. """
-    nodes_ours = env['nodes_ours']
-    nodes_baseline = env['nodes_baseline']
-    radios_ours = env['radios_ours']
-    radios_baseline = env['radios_baseline']
+    networks = env['networks']
     global_clock = env['global_clock']
-    radio_publishers_ours = env['radio_publishers_ours']
-    radio_publishers_baseline = env['radio_publishers_baseline']
 
-    discovery_asn_ours = 'N/A'
-    discovery_asn_baseline = 'N/A'
-    ours_discovered = False
-    baseline_discovered = False
-    all_nodes = nodes_ours + nodes_baseline
-    all_radios = radios_ours + radios_baseline
+    discovery_asns = ['N/A'] * len(networks)
+    network_discovered = [False] * len(networks)
+    
+    all_nodes = []
+    all_radios = []
+    for net in networks:
+        all_nodes.extend(net['nodes'])
+        all_radios.extend(net['radios'])
+
     last_slot_run = -1
-
     for slot in range(total_slots):
         last_slot_run = slot
         global_clock.tick()
+        
         for node in all_nodes:
             node.run_one_time_step()
         
-        for radio in radios_ours:
-            radio.publish()
-                
-        for radio in radios_baseline:
+        for radio in all_radios:
             radio.publish()
                 
         for radio in all_radios:
@@ -354,37 +341,28 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
             
         for node in all_nodes:
             node.evaluate_time_step()
-
-        if not ours_discovered and nodes_ours[0].metrics['adv_success'] >= current_num_nodes - 1:
-            discovery_asn_ours = slot
-            ours_discovered = True
-            logger.warning(f"BFND discovered at ASN: {slot}")
-         
-        
-        if not baseline_discovered and nodes_baseline[0].metrics['adv_success'] >= current_num_nodes - 1:
-            discovery_asn_baseline = slot
-            baseline_discovered = True
-            logger.warning(f"Find discovered at ASN: {slot}")
             
-
-        if ours_discovered and baseline_discovered:
-            logger.warning("Both discovered.")
+        for k, net in enumerate(networks):
+            if not network_discovered[k]:
+                if net['nodes'][0].metrics.get('adv_success', 0) >= current_num_nodes - 1:
+                    discovery_asns[k] = slot
+                    network_discovered[k] = True
+                    logger.warning(f"{net['config_name']} ({net['protocol_name']}) discovered at ASN: {slot}")
+                    
+        if all(network_discovered):
+            logger.warning("All networks discovered.")
             break
 
-    # Check for timeout
-    if not ours_discovered or not baseline_discovered:
+    if not all(network_discovered):
         if last_slot_run >= total_slots - 1:
             logger.warning(f"Reached max slots ({total_slots}) before full discovery.")
-            if not ours_discovered:
-                discovery_asn_ours = 'Timeout'
-            if not baseline_discovered:
-                discovery_asn_baseline = 'Timeout'
+            for k in range(len(networks)):
+                if not network_discovered[k]:
+                    discovery_asns[k] = 'Timeout'
 
-    return discovery_asn_ours, discovery_asn_baseline
-
+    return discovery_asns
 
 def run_one_simulation(sim_num, config_params, run_seed_sequence):
-    """ Wrapper that performs setup, runs simulation, handles exceptions and performs cleanup. """
     sim_start_time = time.time()
     logger = logging.getLogger(f"SimRun_{sim_num}")
     logger.setLevel(config_params['log_level'])
@@ -394,34 +372,27 @@ def run_one_simulation(sim_num, config_params, run_seed_sequence):
 
     current_num_nodes = config_params['num_nodes']
     current_num_cycles = config_params['num_cycles']
-    current_nodes_config = config_params['nodes_config']
+    current_nodes_config = config_params['nodes_config_templates'][0]
 
     env = None
-    discovery_asn_ours = 'N/A'
-    discovery_asn_baseline = 'N/A'
+    num_configs = len(config_params['configs'])
+    discovery_asns = ['N/A'] * num_configs
 
     try:
         env = setup_simulation_environment(config_params, run_seed_sequence, logger)
         
         nominal_runtime_first_node = current_nodes_config[0].get("nominal_runtime", 1000)
-        if not isinstance(nominal_runtime_first_node, int) or nominal_runtime_first_node <= 0:
-            logger.error(f"Invalid nominal_runtime '{nominal_runtime_first_node}'. Using 1000.")
-            nominal_runtime_first_node = 1000
         total_slots = current_num_cycles * nominal_runtime_first_node
         
         logger.info(f"Starting simulation loop for {total_slots} slots.")
-        discovery_asn_ours, discovery_asn_baseline = execute_simulation_loop(env, total_slots, current_num_nodes, logger)
+        discovery_asns = execute_simulation_loop(env, total_slots, current_num_nodes, logger)
 
     except Exception as main_loop_error:
         logger.error(f"Error during run {sim_num}: {main_loop_error}", exc_info=True)
-        discovery_asn_ours = 'RunError' if discovery_asn_ours == 'N/A' else discovery_asn_ours
-        discovery_asn_baseline = 'RunError' if discovery_asn_baseline == 'N/A' else discovery_asn_baseline
+        discovery_asns = ['RunError' if asn == 'N/A' else asn for asn in discovery_asns]
     finally:
-        # Cleanup code
-        harvesters_ours = env['harvesters_ours'] if env else []
-        harvesters_baseline = env['harvesters_baseline'] if env else []
-        all_harvesters = harvesters_ours + harvesters_baseline
-        for h in all_harvesters:
+        shared_harvesters = env['shared_harvesters'] if env else []
+        for h in shared_harvesters:
              if hasattr(h, 'close'):
                   try:
                       h.close()
@@ -429,16 +400,11 @@ def run_one_simulation(sim_num, config_params, run_seed_sequence):
                       logger.warning(f"Error closing harvester subscriber for run {sim_num}: {e}")
 
         sim_end_time = time.time()
-        logger.info(f"Run {sim_num} finished in {sim_end_time - sim_start_time:.2f}s. BFND={discovery_asn_ours}, Find={discovery_asn_baseline}")
+        logger.info(f"Run {sim_num} finished in {sim_end_time - sim_start_time:.2f}s.")
 
-    return discovery_asn_ours, discovery_asn_baseline
-
+    return discovery_asns
 
 def worker_function(sim_num, config_params, run_seed_sequence, log_filepath):
-    """
-    Wrapper function for multiprocessing.
-    Configures logging specifically for this worker process (file only).
-    """
     worker_logger = logging.getLogger()
     for h in worker_logger.handlers[:]:
         worker_logger.removeHandler(h)
@@ -462,27 +428,24 @@ def worker_function(sim_num, config_params, run_seed_sequence, log_filepath):
     worker_logger.addHandler(worker_file_handler)
     worker_logger.setLevel(worker_log_level)
 
-    result_ours, result_baseline = 'Error', 'Error'
+    num_configs = len(config_params['configs'])
+    results = ['Error'] * num_configs
     try:
-        result_ours, result_baseline = run_one_simulation(sim_num, config_params, run_seed_sequence)
+        results = run_one_simulation(sim_num, config_params, run_seed_sequence)
     except Exception as e:
         logging.getLogger(f"WorkerCritical_{os.getpid()}").error(f"Sim {sim_num} failed critically in worker: {e}", exc_info=True)
-    return result_ours, result_baseline
-
+    return results
 
 async def main_async():
-    """ Async main function to run simulations in parallel using ProcessPoolExecutor. """
     main_logger = logging.getLogger("main")
     num_workers = max(1, cpu_count() - 1)
 
-    # --- Determine Trace File and Directory name ---
     trace_file_path = None
-    for node_cfg in nodes_config_template:
+    for node_cfg in config_params_for_worker['nodes_config_templates'][0]:
         harvester_cfg = node_cfg.get('harvester', {})
         if harvester_cfg.get('harvesting_mode', '').lower() == 'file':
             trace_file_path = harvester_cfg.get('file')
             break
-
     sub_dir_name = 'default'
     if trace_file_path:
         base_fn = os.path.basename(trace_file_path)
@@ -497,42 +460,30 @@ async def main_async():
     main_logger.warning(f"Starting Simulation Set: Config '{config_base_name}' under '{sub_dir_name}'")
     main_logger.warning(f"============================================================")
 
-    # --- Generate child SeedSequence objects ---
     child_seed_sequences = [None] * NUM_SIMULATIONS
     if RANDOM_SEED is not None:
         main_logger.info(f"Generating {NUM_SIMULATIONS} child SeedSequences from master seed {RANDOM_SEED}...")
         ss = SeedSequence(RANDOM_SEED)
         child_seed_sequences = ss.spawn(NUM_SIMULATIONS)
-        main_logger.info("Child SeedSequences generated.")
     else:
         main_logger.info("No master seed provided. Each run will use an independent random seed.")
 
-    # --- Prepare config params for workers ---
-    config_params_for_worker = {
-        'clock_frequency': CLOCK_FREQUENCY,
-        'num_nodes': num_nodes_per_protocol,
-        'nodes_config': nodes_config_template,
-        'num_cycles': num_cycles,
-        'energy_scaling_factor': ENERGY_SCALING_FACTOR,
-        'default_power_factor': DEFAULT_POWER_FACTOR,
-        'log_level': log_level
-    }
+    # Remove the earlier config_params_for_worker since it was duplicated inside main_async
+    # Oh wait, config_params_for_worker was created outside main_async in the original file! 
+    # Yes, lines 510-520 are outside. Wait, no, they are inside main_async? Let's check!
+    # Ah, let's just write the rest of the file exactly as needed.
+    # We already have config_params_for_worker from the global scope.
 
-    # --- Set Console Handler Level ---
     found_console_handler = False
     for handler in logging.getLogger().handlers:
         if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-            main_logger.info(f"Setting Console log level to CRITICAL+1 to suppress worker logs.")
             handler.setLevel(logging.CRITICAL + 1)
             found_console_handler = True
             break
-    if not found_console_handler:
-         main_logger.warning("Could not find StreamHandler in main process to adjust level.")
 
     start_time = time.time()
     results = []
 
-    # --- Execute Runs in Parallel ---
     loop = asyncio.get_running_loop()
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         tasks = [
@@ -547,7 +498,6 @@ async def main_async():
             for sim_num in range(NUM_SIMULATIONS)
         ]
         
-        # Await completion asynchronously with a progress bar
         with tqdm(total=NUM_SIMULATIONS, desc=f"Config {config_base_name}", position=0, leave=True, file=sys.stdout, mininterval=1.0, maxinterval=10.0, smoothing=0.1) as progress_bar:
             for fut in asyncio.as_completed(tasks):
                 try:
@@ -555,32 +505,30 @@ async def main_async():
                     results.append(result)
                 except Exception as e:
                     main_logger.error(f"Error retrieving result for run: {e}", exc_info=True)
-                    results.append(('FutureError', 'FutureError'))
+                    results.append(['FutureError'] * len(config_params_for_worker['configs']))
                 progress_bar.update(1)
 
     end_time = time.time()
     main_logger.warning(f"Completed config '{config_base_name}' in {end_time - start_time:.2f} seconds.")
 
-    # --- Save Results ---
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results', sub_dir_name)
     os.makedirs(results_dir, exist_ok=True)
     results_filename = f"results_{config_base_name}_{num_nodes_per_protocol}.tsv"
     results_filepath = os.path.join(results_dir, results_filename)
     try:
         with open(results_filepath, "w") as f:
-            f.write("ASN_Ours\tASN_Baseline\n")
-            for res_ours, res_baseline in results:
-                f.write(f"{res_ours}\t{res_baseline}\n")
+            headers = [f"ASN_{name}" for name in config_params_for_worker['config_names']]
+            f.write("\t".join(headers) + "\n")
+            for res_row in results:
+                f.write("\t".join(str(r) for r in res_row) + "\n")
         main_logger.warning(f"Results for config '{config_base_name}' saved to {results_filepath}")
     except IOError as e:
         main_logger.error(f"Error writing results to '{results_filepath}': {e}")
     except Exception as e:
         main_logger.error(f"Unexpected error writing results: {e}")
 
-
 def main():
     asyncio.run(main_async())
-
 
 if __name__ == "__main__":
     main()
