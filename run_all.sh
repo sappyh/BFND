@@ -7,40 +7,31 @@ else
     PYTHON="python"
 fi
 
-SIMULATIONS=200
+SIMULATIONS=1000
 NODES_LIST="2 3 4 5"
 
 
-# Run pwr_office.h5 datasets (node0 to node4)
+# Run Office Trace Simulations
 echo "=== Running Office Trace Simulations ==="
-for dataset in node0 node1 node2 node3 node4
+for nodes in $NODES_LIST
 do
-    for nodes in $NODES_LIST
-    do
-        echo "Running config_office.yaml with --dataset $dataset --num_nodes $nodes --num_simulations $SIMULATIONS"
-        $PYTHON simulation_v2.py config_office.yaml --dataset $dataset --num_nodes $nodes --num_simulations $SIMULATIONS
-    done
+    echo "Running config_office.yaml with --num_nodes $nodes --num_simulations $SIMULATIONS"
+    $PYTHON simulation_v2.py --config config_office.yaml --num_nodes $nodes --num_simulations $SIMULATIONS
 done
 
-# Run pwr_stairs.h5 datasets (node0 to node5)
+# Run Stairs Trace Simulations
 echo "=== Running Stairs Trace Simulations ==="
-for dataset in node0 node1 node2 node3 node4 node5
+for nodes in $NODES_LIST
 do
-    for nodes in $NODES_LIST
-    do
-        echo "Running config_stairs.yaml with --dataset $dataset --num_nodes $nodes --num_simulations $SIMULATIONS"
-        $PYTHON simulation_v2.py config_stairs.yaml --dataset $dataset --num_nodes $nodes --num_simulations $SIMULATIONS
-    done
+    echo "Running config_stairs.yaml with --num_nodes $nodes --num_simulations $SIMULATIONS"
+    $PYTHON simulation_v2.py --config config_stairs.yaml --num_nodes $nodes --num_simulations $SIMULATIONS
 done
 
 echo "=== Running Cars Trace Simulations ==="
-for dataset in node0 node1 node2 node3 node4 node5
+for nodes in $NODES_LIST
 do
-    for nodes in $NODES_LIST
-    do
-        echo "Running config_cars.yaml with --dataset $dataset --num_nodes $nodes --num_simulations $SIMULATIONS"
-        $PYTHON simulation_v2.py config_cars.yaml --dataset $dataset --num_nodes $nodes --num_simulations $SIMULATIONS
-    done
+    echo "Running config_cars.yaml with --num_nodes $nodes --num_simulations $SIMULATIONS"
+    $PYTHON simulation_v2.py --config config_cars.yaml --num_nodes $nodes --num_simulations $SIMULATIONS
 done
 
 echo "=== All Simulations Completed ==="

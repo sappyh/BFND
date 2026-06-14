@@ -1,5 +1,6 @@
 from src.node.enums import ACTION, RADIO_STATE
 from src.protocol.IProtocol import ProtocolInterface
+from enum import Enum
 
 # Look up table from paper as implemented in BFND_CPP
 scale_table = [
@@ -47,6 +48,11 @@ def get_optimal_scale(t_chr):
     return 0.0284599
 
 
+
+class FindState(Enum):
+    UNINITIALIZED = 0
+    ADVERTISEMENT = 1
+
 class Find(ProtocolInterface):
     def __init__(self, node_id, rng, logger, nominal_time_period):
         self.node_id = node_id
@@ -56,6 +62,7 @@ class Find(ProtocolInterface):
         self.scheduled_advertisement_time = -1
         self.last_turn_off_time = 0
         self.metrics = {}
+        self.state = FindState.UNINITIALIZED
 
     def initialize(self):
         pass
@@ -68,30 +75,38 @@ class Find(ProtocolInterface):
         self.logger.debug(
             f"Node {self.node_id} (Find) scheduled ADV for ASN {self.scheduled_advertisement_time} (delay={delay}, p={p})"
         )
+        self.state = FindState.ADVERTISEMENT
 
     def on_turn_off(self, asn: int):
-        self.scheduled_advertisement_time = -1
+        self.last_turn_off_time = asn
+        self.state = FindState.UNINITIALIZED
 
     def on_voltage_above_voff(self, asn: int):
-        self.last_turn_off_time = asn
+        self.state = FindState.UNINITIALIZED
 
     def on_voltage_above_vmax_thr(self, asn: int):
         self.scheduled_advertisement_time = asn
+        self.state = FindState.ADVERTISEMENT
         self.logger.debug(
             f"Node {self.node_id} (Find) reached V_MAX_THR, scheduled immediate ADV for ASN {self.scheduled_advertisement_time}"
         )
 
     def decide_action(self, asn: int, available_energy: float) -> ACTION:
-        if self.scheduled_advertisement_time != -1 and asn == self.scheduled_advertisement_time:
-            self.scheduled_advertisement_time = -1
+        if self.state == FindState.ADVERTISEMENT and asn == self.scheduled_advertisement_time:
+            self.state = FindState.UNINITIALIZED
             return ACTION.ADVERTISE
-        return ACTION.BUSY_WAIT
+        if self.state == FindState.ADVERTISEMENT:
+            return ACTION.SLEEP
+        if self.state == FindState.UNINITIALIZED:
+            return ACTION.BUSY_WAIT
+        
 
     def evaluate_time_step(self, asn: int, radio_outcome, action_taken):
         pass
 
     def reset(self, asn: int):
         self.scheduled_advertisement_time = -1
+        self.state = FindState.UNINITIALIZED
 
     def print_stats(self):
         pass

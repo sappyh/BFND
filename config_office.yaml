@@ -1,6 +1,6 @@
 # --- Global Simulation Settings ---
 # Number of simulation runs to execute in parallel
-num_simulations: 100
+num_simulations: 1
 # Fixed random seed for reproducibility (use null or remove for random seed)
 random_seed: 42
 # Clock ticks per second
@@ -10,7 +10,7 @@ energy_scaling_factor: 1e-2
 # Default power factor used for calculating energy needs if 'power: default' is set
 default_power_factor: 0.5
 # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-log_level: INFO
+log_level: DEBUG
 
 # --- Per-Protocol Settings ---
 # Number of nodes for EACH protocol (e.g., 5 'ours' and 5 'baseline')
@@ -25,7 +25,7 @@ node1:
   capacitance: 47.0e-6 # Capacitor value (Farads)
   von: 3.0             # Turn-on voltage (Volts)
   voff: 2.4
-  v_max_thr: 3.3            # Turn-off voltage (Volts)
+  v_max_thr: 3.6            # Turn-off voltage (Volts)
   eadv: 48.05e-6       # Energy cost of advertisement (Joules)
   escan: 3.0e-6        # Energy cost of scanning ('ours' protocol) (Joules)
   nominal_runtime: 1000 # Nominal time slots for one charge/discharge cycle
@@ -40,7 +40,7 @@ node2:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
-  v_max_thr: 3.3
+  v_max_thr: 3.6
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000
@@ -55,7 +55,7 @@ node3:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
-  v_max_thr: 3.3
+  v_max_thr: 3.6
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000
@@ -70,7 +70,7 @@ node4:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
-  v_max_thr: 3.3
+  v_max_thr: 3.6
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000
@@ -85,7 +85,7 @@ node5:
   capacitance: 47.0e-6
   von: 3.0
   voff: 2.4
-  v_max_thr: 3.3
+  v_max_thr: 3.6
   eadv: 48.05e-6
   escan: 3.0e-6
   nominal_runtime: 1000

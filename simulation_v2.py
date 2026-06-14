@@ -27,13 +27,11 @@ import sys
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Run Comparative Neighbor Discovery Simulation (BFND vs. Find)")
-parser.add_argument("config_file", help="Path to the YAML configuration file")
-parser.add_argument("--dataset", default="node0", help="Dataset name to use from the trace file (e.g. node0)")
-parser.add_argument("--num_nodes", type=int, default=None, help="Override number of nodes")
+parser.add_argument("--config", required=True, help="Path to the configuration YAML file (e.g. config_office.yaml)")
+parser.add_argument("--num_nodes", type=int, default=None, help="Override number of nodes per protocol")
 parser.add_argument("--num_simulations", type=int, default=None, help="Override number of simulations")
 args = parser.parse_args()
-config_file = args.config_file
-dataset_name = args.dataset
+config_file = args.config
 
 # --- Load Configuration ---
 try:
@@ -64,7 +62,8 @@ log_level = log_level_map.get(log_level_str, logging.INFO)
 log_dir = "./logs"
 os.makedirs(log_dir, exist_ok=True)
 timestamp = time.strftime('%Y%m%d_%H%M%S')
-log_filename_base = f"simulation_comparison_{os.path.basename(config_file).replace('.yaml','')}_{dataset_name}_{timestamp}.log.txt"
+config_base_name = os.path.basename(config_file).replace('.yaml','')
+log_filename_base = f"simulation_comparison_{config_base_name}_{timestamp}.log.txt"
 log_filepath = os.path.join(log_dir, log_filename_base)
 main_file_handler = logging.FileHandler(log_filepath)
 main_file_handler.setLevel(log_level)
@@ -81,7 +80,7 @@ for h in main_process_logger.handlers[:]:
 main_process_logger.addHandler(main_file_handler)
 main_process_logger.addHandler(main_console_handler)
 
-main_process_logger.info(f"Starting Comparative Simulation Run using config: {config_file} and dataset: {dataset_name}")
+main_process_logger.info(f"Starting Comparative Simulation Run using config: {config_file}")
 main_process_logger.info(f"Logging detailed output to: {log_filepath}")
 main_process_logger.info(f"Initial logging level set to: {log_level_str}")
 
@@ -128,7 +127,7 @@ except Exception as e:
     exit(1)
 
 
-def setup_simulation_environment(config_params, run_seed_sequence, logger, dataset_name):
+def setup_simulation_environment(config_params, run_seed_sequence, logger):
     """ Sets up the simulation environment: RNG, clock, publishers, nodes, harvesters, radios, protocols. """
     current_clock_frequency = config_params['clock_frequency']
     current_num_nodes = config_params['num_nodes']
@@ -168,7 +167,9 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
               break
 
     if file_mode_needed:
-         logger.info(f"File mode detected. Harvesters will use dataset '{dataset_name}' from: {file_path_to_use}")
+         logger.info(f"File mode detected. Harvesters will use data from: {file_path_to_use}")
+
+    shared_initial_file_offset = rng.integers(0, 2**31)
 
     for i in range(current_num_nodes):
         node_cfg = current_nodes_config[i]
@@ -212,10 +213,10 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger, datas
             harvester_baseline = harvester_ours
         elif mode_str == 'file':
             ts_in_file = 1 / current_clock_frequency
-            initial_file_offset = rng.integers(0, 2**31)
-            logger.info(f"Node pair {i} (shared harvester) initial file offset: {initial_file_offset}")
+            node_dataset_name = f"node{i}"
+            logger.info(f"Node pair {i} (shared harvester) dataset: {node_dataset_name}, shared initial file offset: {shared_initial_file_offset}")
             harvester_ours = HarvesterFactory.create_harvester(
-                harvestingmode.FILE, clock_publisher, file_path=current_file_path, Ts=ts_in_file, initial_offset=initial_file_offset, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=dataset_name
+                harvestingmode.FILE, clock_publisher, file_path=current_file_path, Ts=ts_in_file, initial_offset=shared_initial_file_offset, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=node_dataset_name
             )
             harvester_baseline = harvester_ours
 
@@ -358,11 +359,13 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
             discovery_asn_ours = slot
             ours_discovered = True
             logger.warning(f"BFND discovered at ASN: {slot}")
-            
+         
+        
         if not baseline_discovered and nodes_baseline[0].metrics['adv_success'] >= current_num_nodes - 1:
             discovery_asn_baseline = slot
             baseline_discovered = True
             logger.warning(f"Find discovered at ASN: {slot}")
+            
 
         if ours_discovered and baseline_discovered:
             logger.warning("Both discovered.")
@@ -380,14 +383,14 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
     return discovery_asn_ours, discovery_asn_baseline
 
 
-def run_one_simulation(sim_num, config_params, run_seed_sequence, dataset_name):
+def run_one_simulation(sim_num, config_params, run_seed_sequence):
     """ Wrapper that performs setup, runs simulation, handles exceptions and performs cleanup. """
     sim_start_time = time.time()
     logger = logging.getLogger(f"SimRun_{sim_num}")
     logger.setLevel(config_params['log_level'])
     logger.propagate = True
 
-    logger.info(f"Starting simulation run {sim_num} for dataset {dataset_name} on PID {os.getpid()}")
+    logger.info(f"Starting simulation run {sim_num} on PID {os.getpid()}")
 
     current_num_nodes = config_params['num_nodes']
     current_num_cycles = config_params['num_cycles']
@@ -398,7 +401,7 @@ def run_one_simulation(sim_num, config_params, run_seed_sequence, dataset_name):
     discovery_asn_baseline = 'N/A'
 
     try:
-        env = setup_simulation_environment(config_params, run_seed_sequence, logger, dataset_name)
+        env = setup_simulation_environment(config_params, run_seed_sequence, logger)
         
         nominal_runtime_first_node = current_nodes_config[0].get("nominal_runtime", 1000)
         if not isinstance(nominal_runtime_first_node, int) or nominal_runtime_first_node <= 0:
@@ -431,7 +434,7 @@ def run_one_simulation(sim_num, config_params, run_seed_sequence, dataset_name):
     return discovery_asn_ours, discovery_asn_baseline
 
 
-def worker_function(sim_num, config_params, run_seed_sequence, log_filepath, dataset_name):
+def worker_function(sim_num, config_params, run_seed_sequence, log_filepath):
     """
     Wrapper function for multiprocessing.
     Configures logging specifically for this worker process (file only).
@@ -461,7 +464,7 @@ def worker_function(sim_num, config_params, run_seed_sequence, log_filepath, dat
 
     result_ours, result_baseline = 'Error', 'Error'
     try:
-        result_ours, result_baseline = run_one_simulation(sim_num, config_params, run_seed_sequence, dataset_name)
+        result_ours, result_baseline = run_one_simulation(sim_num, config_params, run_seed_sequence)
     except Exception as e:
         logging.getLogger(f"WorkerCritical_{os.getpid()}").error(f"Sim {sim_num} failed critically in worker: {e}", exc_info=True)
     return result_ours, result_baseline
@@ -491,7 +494,7 @@ async def main_async():
             sub_dir_name = sub_dir_name[:-3]
 
     main_logger.warning(f"============================================================")
-    main_logger.warning(f"Starting Simulation Set: Dataset '{dataset_name}' under '{sub_dir_name}'")
+    main_logger.warning(f"Starting Simulation Set: Config '{config_base_name}' under '{sub_dir_name}'")
     main_logger.warning(f"============================================================")
 
     # --- Generate child SeedSequence objects ---
@@ -539,37 +542,36 @@ async def main_async():
                 sim_num,
                 config_params_for_worker,
                 child_seed_sequences[sim_num],
-                log_filepath,
-                dataset_name
+                log_filepath
             )
             for sim_num in range(NUM_SIMULATIONS)
         ]
         
         # Await completion asynchronously with a progress bar
-        with tqdm(total=NUM_SIMULATIONS, desc=f"Dataset {dataset_name}", position=0, leave=True, file=sys.stdout, mininterval=1.0, maxinterval=10.0, smoothing=0.1) as progress_bar:
+        with tqdm(total=NUM_SIMULATIONS, desc=f"Config {config_base_name}", position=0, leave=True, file=sys.stdout, mininterval=1.0, maxinterval=10.0, smoothing=0.1) as progress_bar:
             for fut in asyncio.as_completed(tasks):
                 try:
                     result = await fut
                     results.append(result)
                 except Exception as e:
-                    main_logger.error(f"Error retrieving result for dataset {dataset_name}: {e}", exc_info=True)
+                    main_logger.error(f"Error retrieving result for run: {e}", exc_info=True)
                     results.append(('FutureError', 'FutureError'))
                 progress_bar.update(1)
 
     end_time = time.time()
-    main_logger.warning(f"Completed dataset '{dataset_name}' in {end_time - start_time:.2f} seconds.")
+    main_logger.warning(f"Completed config '{config_base_name}' in {end_time - start_time:.2f} seconds.")
 
     # --- Save Results ---
-    results_dir = f"./results/{sub_dir_name}"
+    results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results', sub_dir_name)
     os.makedirs(results_dir, exist_ok=True)
-    results_filename = f"results_{dataset_name}_{num_nodes_per_protocol}.tsv"
+    results_filename = f"results_{config_base_name}_{num_nodes_per_protocol}.tsv"
     results_filepath = os.path.join(results_dir, results_filename)
     try:
         with open(results_filepath, "w") as f:
             f.write("ASN_Ours\tASN_Baseline\n")
             for res_ours, res_baseline in results:
                 f.write(f"{res_ours}\t{res_baseline}\n")
-        main_logger.warning(f"Results for dataset '{dataset_name}' saved to {results_filepath}")
+        main_logger.warning(f"Results for config '{config_base_name}' saved to {results_filepath}")
     except IOError as e:
         main_logger.error(f"Error writing results to '{results_filepath}': {e}")
     except Exception as e:

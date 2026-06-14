@@ -130,6 +130,7 @@ class Node:
             if interacted_id is not None:
                 self.metrics["discovered_nodes"].add(interacted_id)
                 self.metrics["adv_success"] = len(self.metrics["discovered_nodes"])
+                logging.getLogger(f"Node_{self.id}").debug(f"Node {self.id} got ADV success at ASN {self.ASN}")
         if self.protocol:
             self.protocol.evaluate_time_step(self.ASN, radio_outcome, self.action)
 
