@@ -107,7 +107,7 @@ def visualize(events, on_periods, output_file):
         if scans_x:
             fig.add_trace(go.Scatter(
                 x=scans_x, y=[y_pos]*len(scans_x),
-                mode='markers', marker=dict(symbol='line-ns', color='blue', size=15),
+                mode='markers', marker=dict(symbol='line-ns', color='blue', size=15, line=dict(width=3, color='blue')),
                 name='SCAN',
                 legendgroup='SCAN',
                 showlegend=True if i==0 else False,

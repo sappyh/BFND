@@ -13,9 +13,9 @@ class BFNDState(Enum):
 
 class BFND(ProtocolInterface):
     def __init__(self, alpha, eadv, escan, offset, nominal_time_period, node_id, rng, logger):
-        self.alpha = alpha
-        self.eadv = eadv
-        self.escan = escan
+        self.alpha = float(alpha)
+        self.eadv = float(eadv)
+        self.escan = float(escan)
         self.offset = offset
         self.nominal_time_period = nominal_time_period
         self.node_id = node_id

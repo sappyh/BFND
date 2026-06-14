@@ -15,12 +15,12 @@ class Node:
         self.rng = rng
 
         # --- Energy Parameters ---
-        self.capacitance = capacitance
-        self.von = von
-        self.voff = voff
-        self.v_brownout = v_brownout
-        self.eadv = eadv
-        self.v_max_thr = v_max_thr
+        self.capacitance = float(capacitance)
+        self.von = float(von)
+        self.voff = float(voff)
+        self.v_brownout = float(v_brownout)
+        self.eadv = float(eadv)
+        self.v_max_thr = float(v_max_thr)
         self.esleep = 10.5e-9
         self.ebusy_wait = 309e-9
 

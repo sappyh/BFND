@@ -318,29 +318,31 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
 
     discovery_asns = ['N/A'] * len(networks)
     network_discovered = [False] * len(networks)
-    
-    all_nodes = []
-    all_radios = []
-    for net in networks:
-        all_nodes.extend(net['nodes'])
-        all_radios.extend(net['radios'])
 
     last_slot_run = -1
     for slot in range(total_slots):
         last_slot_run = slot
         global_clock.tick()
         
-        for node in all_nodes:
-            node.run_one_time_step()
+        for k, net in enumerate(networks):
+            if not network_discovered[k]:
+                for node in net['nodes']:
+                    node.run_one_time_step()
         
-        for radio in all_radios:
-            radio.publish()
+        for k, net in enumerate(networks):
+            if not network_discovered[k]:
+                for radio in net['radios']:
+                    radio.publish()
                 
-        for radio in all_radios:
-            radio.subscribe()
+        for k, net in enumerate(networks):
+            if not network_discovered[k]:
+                for radio in net['radios']:
+                    radio.subscribe()
             
-        for node in all_nodes:
-            node.evaluate_time_step()
+        for k, net in enumerate(networks):
+            if not network_discovered[k]:
+                for node in net['nodes']:
+                    node.evaluate_time_step()
             
         for k, net in enumerate(networks):
             if not network_discovered[k]:
@@ -348,6 +350,12 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
                     discovery_asns[k] = slot
                     network_discovered[k] = True
                     logger.warning(f"{net['config_name']} ({net['protocol_name']}) discovered at ASN: {slot}")
+                    
+                    for node in net['nodes']:
+                        if hasattr(node, 'clock_subscriber') and node.clock_subscriber:
+                            node.clock_subscriber.unsubscribe()
+                        if hasattr(node, 'energy_harvester') and node.energy_harvester and hasattr(node.energy_harvester, 'clock_subscriber') and node.energy_harvester.clock_subscriber:
+                            node.energy_harvester.clock_subscriber.unsubscribe()
                     
         if all(network_discovered):
             logger.warning("All networks discovered.")

@@ -1,7 +1,7 @@
 protocol: find
 # --- Global Simulation Settings ---
 # Number of simulation runs to execute in parallel
-num_simulations: 100
+num_simulations: 1000
 # Fixed random seed for reproducibility (use null or remove for random seed)
 random_seed: 42
 # Clock ticks per second
@@ -23,11 +23,11 @@ num_cycles: 1000
 # Configuration for the first node instance of each protocol type
 node1:
   alpha: 0.7
-  capacitance: 47.0e-6 # Capacitor value (Farads)
-  von: 3.3             # Turn-on voltage (Volts)
-  voff: 2.7
-  v_max_thr: 3.5            # Turn-off voltage (Volts)
-  eadv: 48.05e-6       # Energy cost of advertisement (Joules)
+  capacitance: 17.0e-6 # Capacitor value (Farads)
+  von: 3.0             # Turn-on voltage (Volts)
+  voff: 2.4
+  v_max_thr: 3.3            # Turn-off voltage (Volts)
+  eadv: 13.82e-6       # Energy cost of advertisement (Joules)
   escan: 3.0e-6        # Energy cost of scanning ('ours' protocol) (Joules)
   nominal_runtime: 1000 # Nominal time slots for one charge/discharge cycle
   runtype: normal      # Behavior override for 'ours' protocol (normal, advertising, scanning)
@@ -38,11 +38,11 @@ node1:
 # Configuration for the second node instance of each protocol type
 node2:
   alpha: 0.7
-  capacitance: 47.0e-6
-  von: 3.3
-  voff: 2.7
-  v_max_thr: 3.5
-  eadv: 48.05e-6
+  capacitance: 17.0e-6
+  von: 3.0
+  voff: 2.4
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
@@ -53,11 +53,11 @@ node2:
 # Configuration for the third node instance of each protocol type
 node3:
   alpha: 0.7
-  capacitance: 47.0e-6
-  von: 3.3
-  voff: 2.7
-  v_max_thr: 3.5
-  eadv: 48.05e-6
+  capacitance: 17.0e-6
+  von: 3.0
+  voff: 2.4
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
@@ -68,11 +68,11 @@ node3:
 # Configuration for the fourth node instance of each protocol type
 node4:
   alpha: 0.7
-  capacitance: 47.0e-6
-  von: 3.3
-  voff: 2.7
-  v_max_thr: 3.5
-  eadv: 48.05e-6
+  capacitance: 17.0e-6
+  von: 3.0
+  voff: 2.4
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
@@ -83,11 +83,11 @@ node4:
 # Configuration for the fifth node instance of each protocol type
 node5:
   alpha: 0.7
-  capacitance: 47.0e-6
-  von: 3.3
-  voff: 2.7
-  v_max_thr: 3.5
-  eadv: 48.05e-6
+  capacitance: 17.0e-6
+  von: 3.0
+  voff: 2.4
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
