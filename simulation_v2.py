@@ -287,6 +287,10 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
                              eadv=node_cfg['eadv'],
                              v_max_thr=node_cfg.get('v_max_thr', 3.3)
                          )
+                         .with_mode_energy(
+                             esleep=node_cfg.get('esleep', 34e-9),
+                             ebusy_wait=node_cfg.get('ebusy_wait', 9.9e-6)
+                         )
                          .with_nominal_time_period(nominal_runtime)
                          .with_rng(rng)
                          .with_runtype(RUN_TYPE[node_cfg.get('runtype', 'normal').upper()])

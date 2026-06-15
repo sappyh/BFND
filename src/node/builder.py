@@ -15,6 +15,8 @@ class NodeBuilder:
         self._v_brownout = None
         self._eadv = None
         self._v_max_thr = None
+        self._esleep = 34e-9
+        self._ebusy_wait = 9.9e-6
         self._nominal_time_period = None
         self._rng = None
         self._runtype = RUN_TYPE.NORMAL
@@ -47,6 +49,11 @@ class NodeBuilder:
         self._v_brownout = v_brownout
         self._eadv = eadv
         self._v_max_thr = v_max_thr
+        return self
+
+    def with_mode_energy(self, esleep, ebusy_wait):
+        self._esleep = esleep
+        self._ebusy_wait = ebusy_wait
         return self
 
     def with_nominal_time_period(self, nominal_time_period):
@@ -95,6 +102,8 @@ class NodeBuilder:
             v_max_thr=self._v_max_thr,
             nominal_time_period=self._nominal_time_period,
             rng=self._rng,
+            esleep=self._esleep,
+            ebusy_wait=self._ebusy_wait,
             runtype=self._runtype,
             log_level=self._log_level
         )

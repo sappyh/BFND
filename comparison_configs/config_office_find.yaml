@@ -1,4 +1,4 @@
-protocol: bfnd
+protocol: find
 # --- Global Simulation Settings ---
 # Number of simulation runs to execute in parallel
 num_simulations: 1000
@@ -23,12 +23,14 @@ num_cycles: 1000
 # Configuration for the first node instance of each protocol type
 node1:
   alpha: 0.7
-  capacitance: 17.0e-6 # Capacitor value (Farads)
+  capacitance: 17.0e-6 # Effective (voltage-derated) capacitance (Farads)
   von: 3.0             # Turn-on voltage (Volts)
   voff: 2.4
   v_max_thr: 3.3            # Turn-off voltage (Volts)
-  eadv: 13.82e-6       # Energy cost of advertisement (Joules)
-  escan: 3.0e-6        # Energy cost of scanning ('ours' protocol) (Joules)
+  eadv: 14.0e-6        # Energy cost of advertisement (Joules)
+  escan: 45e-9         # Energy cost of scanning (GPIO-gated scan circuit) (Joules)
+  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000 # Nominal time slots for one charge/discharge cycle
   runtype: normal      # Behavior override for 'ours' protocol (normal, advertising, scanning)
   harvester:
@@ -42,8 +44,10 @@ node2:
   von: 3.0
   voff: 2.4
   v_max_thr: 3.3
-  eadv: 13.82e-6
-  escan: 3.0e-6
+  eadv: 14.0e-6
+  escan: 45e-9
+  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
   harvester:
@@ -57,8 +61,10 @@ node3:
   von: 3.0
   voff: 2.4
   v_max_thr: 3.3
-  eadv: 13.82e-6
-  escan: 3.0e-6
+  eadv: 14.0e-6
+  escan: 45e-9
+  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
   harvester:
@@ -72,8 +78,10 @@ node4:
   von: 3.0
   voff: 2.4
   v_max_thr: 3.3
-  eadv: 13.82e-6
-  escan: 3.0e-6
+  eadv: 14.0e-6
+  escan: 45e-9
+  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
   harvester:
@@ -87,8 +95,10 @@ node5:
   von: 3.0
   voff: 2.4
   v_max_thr: 3.3
-  eadv: 13.82e-6
-  escan: 3.0e-6
+  eadv: 14.0e-6
+  escan: 45e-9
+  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
   harvester:

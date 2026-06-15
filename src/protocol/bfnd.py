@@ -109,13 +109,13 @@ class BFND(ProtocolInterface):
                 self._reset_charge_state()
                 return ACTION.SLEEP
 
-            scan_probability = self.n_scans_per_charge / self.nominal_time_period
-            if self.rng.random() < scan_probability:
-                self.scans_remaining_this_cycle -= 1
-                self.metrics["scan_sent"] += 1
-                if self.scans_remaining_this_cycle == 0:
-                    self.state = BFNDState.UNINITIALIZED
-                return ACTION.SCAN
+            # Scans are very cheap, so consume them back-to-back (one per slot)
+            # instead of spreading them probabilistically across the cycle.
+            self.scans_remaining_this_cycle -= 1
+            self.metrics["scan_sent"] += 1
+            if self.scans_remaining_this_cycle == 0:
+                self.state = BFNDState.UNINITIALIZED
+            return ACTION.SCAN
 
         return ACTION.SLEEP
 

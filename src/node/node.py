@@ -4,7 +4,7 @@ from src.node.enums import ACTION, STATE, RADIO_STATE, RUN_TYPE
 from src.messaging.Subscriber import Subscriber
 
 class Node:
-    def __init__(self, id, energy_harvester, clock, radio, protocol, capacitance, von, voff, v_brownout, eadv, v_max_thr, nominal_time_period, rng, runtype=RUN_TYPE.NORMAL, log_level=logging.INFO):
+    def __init__(self, id, energy_harvester, clock, radio, protocol, capacitance, von, voff, v_brownout, eadv, v_max_thr, nominal_time_period, rng, esleep=34e-9, ebusy_wait=9.9e-6, runtype=RUN_TYPE.NORMAL, log_level=logging.INFO):
         self.id = id
         self.energy_harvester = energy_harvester
         # Unique subscriber topic
@@ -21,8 +21,10 @@ class Node:
         self.v_brownout = float(v_brownout)
         self.eadv = float(eadv)
         self.v_max_thr = float(v_max_thr)
-        self.esleep = 10.5e-9
-        self.ebusy_wait = 309e-9
+        # nRF52840 System ON idle floor + 1 kHz tick-wake overhead (see docs/nRF52840_power_model.md)
+        self.esleep = float(esleep)
+        # nRF52840 active discharge: full active power (9.9 mW) for a 1 ms slot
+        self.ebusy_wait = float(ebusy_wait)
 
         # --- Timing Parameters ---
         self.nominal_time_period = nominal_time_period
@@ -122,6 +124,8 @@ class Node:
             if cost > 0:
                 self.compute_energy_level(-cost)
         else:
+            if self.ran_once and self.protocol and type(self.protocol).__name__.lower() == "bfnd":
+                self.compute_energy_level(-self.esleep)
             self.radio.sleep()
 
     def evaluate_time_step(self):
@@ -170,5 +174,6 @@ class Node:
         self.logger.debug(f"Node {self.id} resetting at ASN {self.ASN}")
         self.state = STATE.OFF
         self.action = ACTION.SLEEP
+        self.ran_once = False
         if self.protocol:
             self.protocol.reset(self.ASN)
