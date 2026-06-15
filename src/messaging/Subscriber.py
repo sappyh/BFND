@@ -8,7 +8,12 @@ class Subscriber:
         self.subscribe(publisher)
 
     def subscribe(self, publisher):
+        self.publisher = publisher
         publisher.subscribe(self)
+
+    def unsubscribe(self):
+        if hasattr(self, 'publisher') and self.publisher:
+            self.publisher.unsubscribe(self)
 
     def notify(self, message):
         if len(self.message_queue) >= 1000:

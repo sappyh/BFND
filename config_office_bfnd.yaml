@@ -1,3 +1,4 @@
+protocol: bfnd
 # --- Global Simulation Settings ---
 # Number of simulation runs to execute in parallel
 num_simulations: 1000
@@ -21,70 +22,75 @@ num_cycles: 1000
 # --- Node Specific Settings ---
 # Configuration for the first node instance of each protocol type
 node1:
-  alpha: 0.7           # Probability of advertising ('ours' protocol)
-  capacitance: 47.0e-6 # Capacitor value (Farads)
+  alpha: 0.7
+  capacitance: 17.0e-6 # Capacitor value (Farads)
   von: 3.0             # Turn-on voltage (Volts)
-  voff: 2.4            # Turn-off voltage (Volts)
-  eadv: 48.05e-6       # Energy cost of advertisement (Joules)
+  voff: 2.4
+  v_max_thr: 3.3            # Turn-off voltage (Volts)
+  eadv: 13.82e-6       # Energy cost of advertisement (Joules)
   escan: 3.0e-6        # Energy cost of scanning ('ours' protocol) (Joules)
   nominal_runtime: 1000 # Nominal time slots for one charge/discharge cycle
   runtype: normal      # Behavior override for 'ours' protocol (normal, advertising, scanning)
   harvester:
     harvesting_mode: file # constant, gaussian, or file
-    file: "../EnergyTraces/pwr_stairs.h5"
+    file: "../EnergyTraces/pwr_office.h5"
 
 # Configuration for the second node instance of each protocol type
 node2:
   alpha: 0.7
-  capacitance: 47.0e-6
+  capacitance: 17.0e-6
   von: 3.0
   voff: 2.4
-  eadv: 48.05e-6
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../EnergyTraces/pwr_stairs.h5"
+    file: "../EnergyTraces/pwr_office.h5"
 
 # Configuration for the third node instance of each protocol type
 node3:
   alpha: 0.7
-  capacitance: 47.0e-6
+  capacitance: 17.0e-6
   von: 3.0
   voff: 2.4
-  eadv: 48.05e-6
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../EnergyTraces/pwr_stairs.h5"
+    file: "../EnergyTraces/pwr_office.h5"
 
 # Configuration for the fourth node instance of each protocol type
 node4:
   alpha: 0.7
-  capacitance: 47.0e-6
+  capacitance: 17.0e-6
   von: 3.0
   voff: 2.4
-  eadv: 48.05e-6
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../EnergyTraces/pwr_stairs.h5"
+    file: "../EnergyTraces/pwr_office.h5"
 
 # Configuration for the fifth node instance of each protocol type
 node5:
   alpha: 0.7
-  capacitance: 47.0e-6
+  capacitance: 17.0e-6
   von: 3.0
   voff: 2.4
-  eadv: 48.05e-6
+  v_max_thr: 3.3
+  eadv: 13.82e-6
   escan: 3.0e-6
   nominal_runtime: 1000
   runtype: normal
   harvester:
     harvesting_mode: file
-    file: "../EnergyTraces/pwr_stairs.h5"
+    file: "../EnergyTraces/pwr_office.h5"

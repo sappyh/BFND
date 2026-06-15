@@ -1,5 +1,7 @@
+from src.node.enums import ACTION, RADIO_STATE
 from src.protocol.IProtocol import ProtocolInterface
-from src.node.enums import ACTION, STATE, RADIO_STATE
+from enum import Enum
+import math
 
 # Look up table from paper as implemented in BFND_CPP
 scale_table = [
@@ -28,63 +30,99 @@ scale_table = [
     (15, 0.41162111340203345), (10, 0.5243514859675414), (5, 0.8358041858099494)
 ]
 
-def get_optimal_scale(t_chr):
-    if t_chr >= scale_table[0][0]:
-        return scale_table[0][1]
-    if t_chr <= scale_table[-1][0]:
-        return scale_table[-1][1]
-        
-    for i in range(len(scale_table) - 1):
-        if scale_table[i+1][0] <= t_chr <= scale_table[i][0]:
-            x0, y0 = scale_table[i]
-            x1, y1 = scale_table[i+1]
-            return y0 + (t_chr - x0) * (y1 - y0) / (x1 - x0)
-            
-    return 0.0284599 # Default fallback
+
+scale_tab = [0.0] * 257
+for i in range(257):
+    t_chr = (i + 1) * 10
+    for j in range(len(scale_table) - 1):
+        if scale_table[j + 1][0] <= t_chr <= scale_table[j][0]:
+            x0, y0 = scale_table[j]
+            x1, y1 = scale_table[j + 1]
+            scale_tab[i] = y0 + (t_chr - x0) * (y1 - y0) / (x1 - x0)
+            break
+
+def lookup_scale(t_chr: int) -> float:
+    if t_chr < 10:
+        return scale_tab[0]
+    elif t_chr > 2560:
+        return scale_tab[255]
+
+    idx_low = (t_chr // 10) - 1
+    val_low = scale_tab[idx_low]
+    val_high = scale_tab[t_chr // 10]
+    frac = (t_chr % 10) / 10.0
+    return val_low + frac * (val_high - val_low)
+
+def geometric_itf_sample(p: float, rng) -> int:
+    y = rng.integers(0, 4096) / 4096.0
+    p_clamped = min(0.999999, p)
+    res_float = math.log(1.0 - y) / math.log(1.0 - p_clamped) - 1.0
+    res = int(res_float)
+    if res < 0:
+        res = 0
+    return res
+
+
+
+class FindState(Enum):
+    UNINITIALIZED = 0
+    ADVERTISEMENT = 1
 
 class Find(ProtocolInterface):
-    def __init__(self):
+    def __init__(self, node_id, rng, logger, nominal_time_period):
+        self.node_id = node_id
+        self.rng = rng
+        self.logger = logger
+        self.nominal_time_period = nominal_time_period
         self.scheduled_advertisement_time = -1
         self.last_turn_off_time = 0
         self.metrics = {}
+        self.state = FindState.UNINITIALIZED
 
-    def initialize(self, node):
+    def initialize(self):
         pass
 
-    def on_turn_on(self, node):
-        current_t_chr = node.ASN if self.last_turn_off_time == 0 else (node.ASN - self.last_turn_off_time)
-        p = get_optimal_scale(current_t_chr)
-        
-        # Sample from geometric distribution (failures before first success, i.e. >= 0)
-        # In numpy, geometric(p) returns values >= 1. Subtracting 1 gives values >= 0.
-        delay = node.rng.geometric(p) - 1
-        
-        self.scheduled_advertisement_time = node.ASN + delay
-        node.logger.debug(f"Node {node.id} (Find) scheduled ADV for ASN {self.scheduled_advertisement_time} (delay={delay}, p={p})")
+    def on_turn_on(self, asn: int):
+        current_t_chr = asn if self.last_turn_off_time == 0 else (asn - self.last_turn_off_time)
+        delay = geometric_itf_sample(lookup_scale(current_t_chr), self.rng)
+        self.scheduled_advertisement_time = asn + delay
+        self.logger.debug(
+            f"Node {self.node_id} (Find) scheduled ADV for ASN {self.scheduled_advertisement_time} (delay={delay})"
+        )
+        self.state = FindState.ADVERTISEMENT
 
-    def on_turn_off(self, node):
-        self.scheduled_advertisement_time = -1
+    def on_turn_off(self, asn: int):
+        self.last_turn_off_time = asn
+        self.state = FindState.UNINITIALIZED
 
-    def on_voltage_above_voff(self, node):
-        self.last_turn_off_time = node.ASN
+    def on_voltage_above_voff(self, asn: int):
+        self.state = FindState.UNINITIALIZED
 
-    def decide_action(self, node) -> ACTION:
-        if self.scheduled_advertisement_time != -1 and node.ASN == self.scheduled_advertisement_time:
-            self.scheduled_advertisement_time = -1
+    def on_voltage_above_vmax_thr(self, asn: int):
+        self.scheduled_advertisement_time = asn
+        self.state = FindState.ADVERTISEMENT
+        self.logger.debug(
+            f"Node {self.node_id} (Find) reached V_MAX_THR, scheduled immediate ADV for ASN {self.scheduled_advertisement_time}"
+        )
+
+    def decide_action(self, asn: int, available_energy: float) -> ACTION:
+        if self.state == FindState.ADVERTISEMENT and asn == self.scheduled_advertisement_time:
+            self.state = FindState.UNINITIALIZED
             return ACTION.ADVERTISE
-        return ACTION.SLEEP
+        if self.state == FindState.ADVERTISEMENT:
+            return ACTION.SLEEP
+        if self.state == FindState.UNINITIALIZED:
+            return ACTION.BUSY_WAIT
+        
 
-    def process_radio_outcome(self, node, radio_outcome):
-        if radio_outcome == RADIO_STATE.SUCCESS and node.state == STATE.ON:
-            if node.action == ACTION.ADVERTISE:
-                node.logger.info(f"Node {node.id}: ASN {node.ASN}, Advertise Success")
-                node.metrics["adv_success"] += 1
+    def evaluate_time_step(self, asn: int, radio_outcome, action_taken):
+        pass
 
-    def reset(self, node):
+    def reset(self, asn: int):
         self.scheduled_advertisement_time = -1
-        ## self.last_turn_off_time = 0 ## Disable reset of last turn off time for Find
+        self.state = FindState.UNINITIALIZED
 
-    def print_stats(self, node):
+    def print_stats(self):
         pass
 
     def get_metrics(self) -> dict:

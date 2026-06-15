@@ -8,6 +8,10 @@ class Publisher:
     def subscribe(self, subscriber):
         self.subscribers.append(subscriber)
 
+    def unsubscribe(self, subscriber):
+        if subscriber in self.subscribers:
+            self.subscribers.remove(subscriber)
+
     def publish(self, message):
         for subscriber in self.subscribers:
             try:
