@@ -1,0 +1,84 @@
+clock_frequency: 1000
+default_power_factor: 0.5
+energy_scaling_factor: 1e-2
+log_level: INFO
+node1:
+  alpha: 0.5
+  capacitance: 2.2e-05
+  eadv: 1.4e-05
+  ebusy_wait: 9.9e-06
+  escan: 45e-9
+  esleep: 1.44e-08
+  harvester:
+    file: ../EnergyTraces/pwr_washer.h5
+    harvesting_mode: file
+  nominal_runtime: 1000
+  runtype: normal
+  v_max_thr: 3.3
+  voff: 2.4
+  von: 3.0
+node2:
+  alpha: 0.5
+  capacitance: 2.2e-05
+  eadv: 1.4e-05
+  ebusy_wait: 9.9e-06
+  escan: 45e-9
+  esleep: 1.44e-08
+  harvester:
+    file: ../EnergyTraces/pwr_washer.h5
+    harvesting_mode: file
+  nominal_runtime: 1000
+  runtype: normal
+  v_max_thr: 3.3
+  voff: 2.4
+  von: 3.0
+node3:
+  alpha: 0.5
+  capacitance: 2.2e-05
+  eadv: 1.4e-05
+  ebusy_wait: 9.9e-06
+  escan: 45e-9
+  esleep: 1.44e-08
+  harvester:
+    file: ../EnergyTraces/pwr_washer.h5
+    harvesting_mode: file
+  nominal_runtime: 1000
+  runtype: normal
+  v_max_thr: 3.3
+  voff: 2.4
+  von: 3.0
+node4:
+  alpha: 0.5
+  capacitance: 2.2e-05
+  eadv: 1.4e-05
+  ebusy_wait: 9.9e-06
+  escan: 45e-9
+  esleep: 1.44e-08
+  harvester:
+    file: ../EnergyTraces/pwr_washer.h5
+    harvesting_mode: file
+  nominal_runtime: 1000
+  runtype: normal
+  v_max_thr: 3.3
+  voff: 2.4
+  von: 3.0
+node5:
+  alpha: 0.5
+  capacitance: 2.2e-05
+  eadv: 1.4e-05
+  ebusy_wait: 9.9e-06
+  escan: 45e-9
+  esleep: 1.44e-08
+  harvester:
+    file: ../EnergyTraces/pwr_washer.h5
+    harvesting_mode: file
+  nominal_runtime: 1000
+  runtype: normal
+  v_max_thr: 3.3
+  voff: 2.4
+  von: 3.0
+num_cycles: 1000
+num_nodes: 5
+num_simulations: 1000
+protocol: bfnd
+random_seed: 42

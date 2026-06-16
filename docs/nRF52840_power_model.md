@@ -212,10 +212,10 @@ idle floor,
 
 $$E_\text{sleep} = P_\text{active}\,t_\text{wake} + P_\text{idle}\,(T - t_\text{wake}),$$
 
-with $t_\text{wake} \approx 3\ \mu\text{s}$ and $T = 1$ ms, gives
+with $t_\text{wake} \approx 1\ \mu\text{s}$ and $T = 1$ ms, gives
 
-$$E_\text{sleep} \approx 9.9\ \text{mW} \times 3\ \mu\text{s}
-+ 4.5\ \mu\text{W} \times 997\ \mu\text{s} \approx 34\ \text{nJ},$$
+$$E_\text{sleep} \approx 9.9\ \text{mW} \times 1\ \mu\text{s}
++ 4.5\ \mu\text{W} \times 997\ \mu\text{s} \approx 14.4\ \text{nJ},$$
 
 corresponding to an average sleep current of Γëê 11 ┬╡A at 3 V. This figure deliberately
 captures the wake-up overhead that an idle-current-only estimate would omit.

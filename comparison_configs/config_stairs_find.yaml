@@ -29,7 +29,7 @@ node1:
   v_max_thr: 3.3            # Turn-off voltage (Volts)
   eadv: 14.0e-6        # Energy cost of advertisement (Joules)
   escan: 45e-9         # Energy cost of scanning (GPIO-gated scan circuit) (Joules)
-  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  esleep: 14.4e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
   ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000 # Nominal time slots for one charge/discharge cycle
   runtype: normal      # Behavior override for 'ours' protocol (normal, advertising, scanning)
@@ -46,7 +46,7 @@ node2:
   v_max_thr: 3.3
   eadv: 14.0e-6
   escan: 45e-9
-  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  esleep: 14.4e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
   ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
@@ -63,7 +63,7 @@ node3:
   v_max_thr: 3.3
   eadv: 14.0e-6
   escan: 45e-9
-  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  esleep: 14.4e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
   ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
@@ -80,7 +80,7 @@ node4:
   v_max_thr: 3.3
   eadv: 14.0e-6
   escan: 45e-9
-  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  esleep: 14.4e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
   ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
@@ -97,7 +97,7 @@ node5:
   v_max_thr: 3.3
   eadv: 14.0e-6
   escan: 45e-9
-  esleep: 34e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
+  esleep: 14.4e-9        # Energy cost of a sleep tick (System ON idle + 1 kHz wake) (Joules)
   ebusy_wait: 9.9e-6   # Energy cost of an active-discharge (busy-wait) slot (Joules)
   nominal_runtime: 1000
   runtype: normal
