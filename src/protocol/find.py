@@ -92,12 +92,12 @@ class Find(ProtocolInterface):
         self.state = FindState.ADVERTISEMENT
 
     def on_turn_off(self, asn: int):
-        self.last_turn_off_time = asn
-        self.state = FindState.UNINITIALIZED
+        pass
 
     def on_voltage_above_voff(self, asn: int):
+        self.last_turn_off_time = asn
         self.state = FindState.UNINITIALIZED
-
+    
     def on_voltage_above_vmax_thr(self, asn: int):
         self.scheduled_advertisement_time = asn
         self.state = FindState.ADVERTISEMENT
@@ -120,6 +120,7 @@ class Find(ProtocolInterface):
 
     def reset(self, asn: int):
         self.scheduled_advertisement_time = -1
+        self.last_turn_off_time = 0
         self.state = FindState.UNINITIALIZED
 
     def print_stats(self):

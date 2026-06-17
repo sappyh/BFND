@@ -80,7 +80,7 @@ class Node:
             if self.protocol and hasattr(self.protocol, 'on_voltage_below_von'):
                 self.protocol.on_voltage_below_von(self.ASN)
 
-        if voltage < self.v_brownout and self.ran_once:
+        if voltage < self.v_brownout:
             self.reset()
 
         if self.state == STATE.OFF and voltage >= self.von:
@@ -124,8 +124,7 @@ class Node:
             if cost > 0:
                 self.compute_energy_level(-cost)
         else:
-            if self.ran_once and self.protocol and type(self.protocol).__name__.lower() == "bfnd":
-                self.compute_energy_level(-self.esleep)
+            self.compute_energy_level(-self.esleep)
             self.radio.sleep()
 
     def evaluate_time_step(self):

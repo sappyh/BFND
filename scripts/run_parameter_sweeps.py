@@ -6,7 +6,7 @@ import statistics
 from pathlib import Path
 
 # Sweeps definition
-datasets = ["washer", "office", "stairs"]
+datasets = ["jogging", "office", "stairs", "washer"]
 # A list of dictionaries defining the sweep
 sweeps = [
     # Sweep 1: Alpha
