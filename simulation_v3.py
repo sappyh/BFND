@@ -24,6 +24,8 @@ from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor
 import json
 import sys
+# --- Global constant --- #
+NUM_DATASET_NODES = 5
 
 # --- Argument Parsing ---
 parser = argparse.ArgumentParser(description="Run Comparative Neighbor Discovery Simulation (BFND vs. Find)")
@@ -195,6 +197,8 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
     component_log_level = logging.DEBUG if config_params['log_level'] == logging.DEBUG else logging.WARNING
     harvester_log_level = component_log_level
 
+    dataset_node_indices = rng.permutation(NUM_DATASET_NODES)
+
     for i in range(current_num_nodes):
         node_cfg = c0_nodes_cfg[i]
         nominal_runtime = node_cfg.get('nominal_runtime', 1000)
@@ -232,7 +236,7 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
             )
         elif mode_str == 'file':
             ts_in_file = 1 / current_clock_frequency
-            node_dataset_name = f"node{i}"
+            node_dataset_name = f"node{dataset_node_indices[i]}"
             harvester = HarvesterFactory.create_harvester(
                 harvestingmode.FILE, clock_publisher, file_path=file_path_to_use, Ts=ts_in_file, initial_offset=shared_initial_file_offset, log_level=harvester_log_level, nominal_runtime=nominal_runtime, dataset_name=node_dataset_name
             )
