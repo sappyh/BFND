@@ -74,7 +74,7 @@ for dataset in datasets:
             
         print(f"Running simulation group for {dataset} - {sweep_type} sweep")
         # Run simulation with all configs for this sweep type simultaneously
-        cmd = [python_cmd, "simulation_v3.py"] + config_paths + ["--num_nodes", str(num_nodes), "--num_simulations", str(num_simulations)]
+        cmd = [python_cmd, "simulation.py"] + config_paths + ["--num_nodes", str(num_nodes), "--num_simulations", str(num_simulations)]
         subprocess.run(cmd, check=True)
         
         first_config_name = sweep_configs_info[0][0]

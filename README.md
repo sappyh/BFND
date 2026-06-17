@@ -7,6 +7,7 @@ A Python-based simulator for Battery-Free Neighbor Discovery (BFND). This projec
 - **Asynchronous & Process-Level Parallelization**: Uses Python `asyncio` and `ProcessPoolExecutor` to parallelize multiple simulation runs concurrently across all CPU cores.
 - **HDF5 Energy Traces**: Supports replaying file-based energy harvesting traces via HDF5 files.
 - **Configurable**: Configured via a central `config.yaml` file to define simulation environments, node/capacitor settings, and harvesting profiles.
+- **Simulation Checkpointing & Resume**: Supports automatic checkpointing and resuming of long-running simulations. If a simulation is interrupted, it will automatically resume from the last completed run and append results dynamically to avoid data loss.
 
 ## Setup Instructions
 
@@ -37,10 +38,16 @@ To run the simulator locally, we recommend setting up a Python virtual environme
 To run the comparative neighbor discovery simulations:
 
 ```bash
-python simulation_v2.py config.yaml
+python simulation.py config.yaml
 ```
 
 Logs will be generated under the `logs/` directory, and output TSV results containing the discovery times of the respective protocols will be saved in `results/`.
+
+### Checkpointing & Resuming Simulations
+
+The simulator features a robust resume system for long-running Monte Carlo simulations:
+- **Automatic Resume**: When a simulation starts, it checks if the results file (e.g., `results/washer/results_config_washer_bfnd_5.tsv`) already exists and contains valid results. It will skip already completed runs and resume exactly where it was interrupted.
+- **Incremental Writing**: Results are appended to the TSV file dynamically as each worker process finishes, ensuring no progress is lost in case of a crash, manual pause, or power interruption.
 
 ---
 
