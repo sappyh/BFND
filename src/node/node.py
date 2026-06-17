@@ -13,6 +13,7 @@ class Node:
         self.protocol = protocol
         self.runtype = runtype
         self.rng = rng
+        self.phase_shift = self.rng.uniform(-0.5, 0.5)
 
         # --- Energy Parameters ---
         self.capacitance = float(capacitance)
@@ -99,14 +100,14 @@ class Node:
         if self.state == STATE.ON:
             cost = 0.0
             if action_to_do == ACTION.ADVERTISE:
-                self.radio.advertise(self.ASN, self.id)
+                self.radio.advertise(self.ASN, self.id, self.phase_shift)
                 self.metrics["adv_sent"] += 1
                 cost = self.eadv
                 self.logger.debug(f"Node {self.id} performing ADV at ASN {self.ASN}")
             elif action_to_do == ACTION.SCAN:
                 # Get escan cost from protocol (defaults to 0 if not present)
                 escan = getattr(self.protocol, 'escan', 0.0)
-                self.radio.scan(self.ASN, self.id)
+                self.radio.scan(self.ASN, self.id, self.phase_shift)
                 if self.protocol and hasattr(self.protocol, 'metrics'):
                     self.protocol.metrics["scan_sent"] = self.protocol.metrics.get("scan_sent", 0) + 1
                 cost = escan
