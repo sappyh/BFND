@@ -8,6 +8,15 @@ class RadioEvent(Enum):
     ADVERTISE = 1
     SCAN = 2
 
+def check_tx_overlap(p1, p2):
+    def overlap(s1, e1, s2, e2):
+        return max(s1, s2) < min(e1, e2)
+    
+    return (overlap(p1, p1 + 0.048, p2, p2 + 0.048) or
+            overlap(p1, p1 + 0.048, p2 + 0.928, p2 + 0.976) or
+            overlap(p1 + 0.928, p1 + 0.976, p2, p2 + 0.048) or
+            overlap(p1 + 0.928, p1 + 0.976, p2 + 0.928, p2 + 0.976))
+
 class AsyncRadioMessage:
     def __init__(self, ASN, radioEvent, nodeID, phase_shift=0.0, loglevel=logging.INFO):
         self.ASN = ASN
@@ -144,8 +153,25 @@ class AsyncRadio(RadioInterface):
             else:
                 ## Multiple messages is allowed with Scan 
                 if self.transmitted_message.radioEvent == RadioEvent.ADVERTISE:
-                    self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Interference detected ({n_messages} messages) at ASN {self.transmitted_message.ASN}")
-                    current_outcome = RADIO_STATE.FAILURE
+                    successful_msgs = []
+                    for i, msg in enumerate(received_messages):
+                        if self.transmitted_message.check_message(msg) == RADIO_STATE.SUCCESS:
+                            collides = False
+                            for j, other_msg in enumerate(received_messages):
+                                if i != j:
+                                    if check_tx_overlap(msg.phase_shift, other_msg.phase_shift):
+                                        collides = True
+                                        break
+                            if not collides:
+                                successful_msgs.append(msg)
+                    
+                    if successful_msgs:
+                        current_outcome = RADIO_STATE.SUCCESS
+                        self.last_interacted_node_id = successful_msgs[0].nodeID
+                        self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction with Node {self.last_interacted_node_id} at ASN {self.transmitted_message.ASN} despite multiple messages")
+                    else:
+                        self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Interference detected ({n_messages} messages) at ASN {self.transmitted_message.ASN}")
+                        current_outcome = RADIO_STATE.FAILURE
                 else:
                     self.logger.info(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction (Energy Detected) at ASN {self.transmitted_message.ASN}")
                     current_outcome = RADIO_STATE.SUCCESS

@@ -100,10 +100,12 @@ def load_summary(path: Path) -> ResultSummary:
         if reader.fieldnames is None:
             raise ValueError(f"{path} has no header row")
 
-        expected = {"ASN_Ours", "ASN_Baseline"}
-        missing_headers = expected.difference(reader.fieldnames)
-        if missing_headers:
-            raise ValueError(f"{path} is missing columns: {', '.join(sorted(missing_headers))}")
+        asn_cols = [c for c in reader.fieldnames if c.startswith("ASN_")]
+        if len(asn_cols) < 2:
+            raise ValueError(f"{path} must have at least 2 ASN_ columns, found: {asn_cols}")
+
+        ours_col = next((c for c in asn_cols if "bfnd" in c.lower() or "ours" in c.lower()), asn_cols[0])
+        baseline_col = next((c for c in asn_cols if c != ours_col), asn_cols[1] if ours_col == asn_cols[0] else asn_cols[0])
 
         total_rows = 0
         ours_values: list[int] = []
@@ -114,8 +116,8 @@ def load_summary(path: Path) -> ResultSummary:
 
         for row in reader:
             total_rows += 1
-            ours = parse_result_value(row.get("ASN_Ours"))
-            baseline = parse_result_value(row.get("ASN_Baseline"))
+            ours = parse_result_value(row.get(ours_col))
+            baseline = parse_result_value(row.get(baseline_col))
 
             if ours is None:
                 ours_missing += 1
