@@ -65,10 +65,20 @@ The Find protocol minimizes discovery latency by appending a random delay—draw
 
 For example, if a node's charging phase takes `5000` slots (5 seconds), it seamlessly extrapolates the theoretically optimal scale parameter for its next advertising delay, ensuring the baseline operates at its peak during comparative tests.
 
-### Implicit `Find + Flync` Simulation
-It is important to note that because of the time-slotted nature of our simulator (where all nodes act exactly on the boundaries of the `1000 Hz` discrete `GlobalClock`), we are actually modeling **Find + Flync** rather than pure continuous-time Find.
+### Slotted Synchronization Models: Phased (Flync) and Asynchronous (Non-Phased)
 
-In the original paper, "Flync" is an extension that exploits 50 Hz powerline flicker to give distributed nodes a shared, phase-synchronized 100 Hz clock, allowing them to discretize time into aligned slots and drastically boosting their collision probability. Because our simulator's architecture rigidly forces all actions onto a global 1.0ms grid, it implicitly simulates the exact benefits of this shared, phase-synchronized clock (albeit at 1000 Hz instead of 100 Hz).
+The simulator supports two models for slot-level synchronization between nodes:
+
+1. **Asynchronous Slotted Model (Default)**:
+   - Evaluated using the `AsyncRadio` radio module. Nodes do **not** have to have their slot boundaries phase-synchronized.
+   - Each node is initialized with a random sub-slot phase shift ($\phi \in [-0.5, 0.5]$ ticks).
+   - Radio transmissions (advertisements and scans) are evaluated in continuous time based on these phase shifts.
+   - The radio checks for exact timing overlaps between concurrent transmissions to compute collisions (`check_tx_overlap`) and evaluates successful discovery based on the alignment of the scanning receiver window and the advertising transmission.
+
+2. **Implicit Phase-Synchronized Model (Find + Flync)**:
+   - Evaluated using the `SimpleRadio` module. This models a scenario where slot boundaries are perfectly phase-synchronized.
+   - In the original NSDI'21 paper, **Flync** is an extension that exploits 50 Hz powerline flicker to give nodes a shared, phase-synchronized 100 Hz clock.
+   - By forcing all node actions exactly onto the discrete $1.0\text{ ms}$ boundaries of the `GlobalClock`, this configuration simulates the exact performance benefits of a phase-locked shared clock.
 ### Active Discharging and `ACTION.BUSY_WAIT`
 
 To address the race condition where a node remains permanently in the `ON` state after successfully transmitting an advertisement (due to high harvesting rates or large capacitance), the simulator replicates the physical active discharging behavior of the original Find firmware.
