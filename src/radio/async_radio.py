@@ -8,11 +8,12 @@ class RadioEvent(Enum):
     ADVERTISE = 1
     SCAN = 2
 
-class RadioMessage:
-    def __init__(self, ASN, radioEvent, nodeID, loglevel=logging.INFO):
+class AsyncRadioMessage:
+    def __init__(self, ASN, radioEvent, nodeID, phase_shift=0.0, loglevel=logging.INFO):
         self.ASN = ASN
         self.radioEvent = radioEvent
         self.nodeID = nodeID
+        self.phase_shift = phase_shift
         self.logger = logging.getLogger(f"RadioMessage_Node{nodeID}")
         self.logger.setLevel(loglevel)
         self.logger.disabled = True
@@ -23,8 +24,13 @@ class RadioMessage:
         if self.ASN == message.ASN:
             if self.radioEvent == RadioEvent.ADVERTISE:
                 if message.radioEvent == RadioEvent.ADVERTISE:
-                    self.logger.debug(f"ADV Success: Self Node {self.nodeID} heard ADV from Node {message.nodeID} at ASN {self.ASN}")
-                    return RADIO_STATE.SUCCESS
+                    abs_diff = abs(self.phase_shift - message.phase_shift)
+                    # Node discovery succeeds if the absolute difference in phase shifts is between 88us (0.088ms) and 840us (0.840ms)
+                    if 0.088 <= abs_diff <= 0.840:
+                        self.logger.debug(f"ADV Success: Self Node {self.nodeID} heard ADV from Node {message.nodeID} at ASN {self.ASN}")
+                        return RADIO_STATE.SUCCESS
+                    else:
+                        return RADIO_STATE.FAILURE
                 else:
                     return RADIO_STATE.FAILURE
             elif self.radioEvent == RadioEvent.SCAN:
@@ -35,10 +41,7 @@ class RadioMessage:
                     return RADIO_STATE.FAILURE
         return RADIO_STATE.FAILURE
 
-# Alias for backward compatibility
-radioMessage = RadioMessage
-
-class SimpleRadio(RadioInterface):
+class AsyncRadio(RadioInterface):
     def __init__(self, publisher=None, loglevel=logging.INFO):
         self.publisher = publisher
         self.transmit_message = None
@@ -65,7 +68,7 @@ class SimpleRadio(RadioInterface):
 
     def advertise(self, asn, nodeID, phase_shift):
         self.logger.debug(f"Node {nodeID} preparing ADV for ASN {asn}")
-        message = RadioMessage(asn, RadioEvent.ADVERTISE, nodeID, loglevel=self.logger.getEffectiveLevel())
+        message = AsyncRadioMessage(asn, RadioEvent.ADVERTISE, nodeID, phase_shift=phase_shift, loglevel=self.logger.getEffectiveLevel())
         self.transmit_message = message
         self.transmitted_message = None
         self.receive_message_outcome = RADIO_STATE.FAILURE
@@ -73,7 +76,7 @@ class SimpleRadio(RadioInterface):
 
     def scan(self, asn, nodeID, phase_shift):
         self.logger.debug(f"Node {nodeID} preparing SCAN for ASN {asn}")
-        message = RadioMessage(asn, RadioEvent.SCAN, nodeID, loglevel=self.logger.getEffectiveLevel())
+        message = AsyncRadioMessage(asn, RadioEvent.SCAN, nodeID, phase_shift=phase_shift, loglevel=self.logger.getEffectiveLevel())
         self.transmitted_message = message
         self.transmit_message = None
         self.receive_message_outcome = RADIO_STATE.FAILURE

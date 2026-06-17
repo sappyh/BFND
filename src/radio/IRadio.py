@@ -4,10 +4,10 @@ class RadioInterface:
     def connectto(self, other_radio):
         raise NotImplementedError
 
-    def advertise(self, asn, node_id):
+    def advertise(self, asn, node_id, phase_shift):
         raise NotImplementedError
 
-    def scan(self, asn, node_id):
+    def scan(self, asn, node_id, phase_shift):
         raise NotImplementedError
 
     def get_message(self):
@@ -24,6 +24,10 @@ class RadioInterface:
 
 class RadioFactory:
     @staticmethod
-    def create_radio(publisher=None, log_level=logging.INFO):
-        from .simple_radio import SimpleRadio
-        return SimpleRadio(publisher, log_level)
+    def create_radio(radio_type="simple", publisher=None, log_level=logging.INFO):
+        if radio_type == "async":
+            from .async_radio import AsyncRadio
+            return AsyncRadio(publisher, log_level)
+        else:
+            from .simple_radio import SimpleRadio
+            return SimpleRadio(publisher, log_level)
