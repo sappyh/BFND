@@ -1,0 +1,308 @@
+import sys
+import os
+import re
+from pathlib import Path
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import numpy as np
+
+# Adjust paths to import compare_results
+WORKSPACE_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(WORKSPACE_DIR / "scripts"))
+import compare_results
+
+RESULTS_DIR = WORKSPACE_DIR / "results"
+OUTPUT_PDF = WORKSPACE_DIR / "results_analysis.pdf"
+
+def load_all_results():
+    # Structure: results/<scenario>/results_config_<scenario>_*.tsv
+    # E.g. results/office/results_config_office_bfnd_2.tsv
+    data = {}
+    
+    if not RESULTS_DIR.exists():
+        return data
+        
+    for tsv_file in RESULTS_DIR.glob("**/*.tsv"):
+        scenario = tsv_file.parent.name
+        
+        # Extract node count from name
+        name_parts = tsv_file.stem.split('_')
+        try:
+            nodes = int(name_parts[-1])
+        except ValueError:
+            continue
+            
+        try:
+            summary = compare_results.load_summary(tsv_file)
+        except Exception as e:
+            print(f"Error loading {tsv_file}: {e}")
+            continue
+            
+        if scenario not in data:
+            data[scenario] = {}
+        data[scenario][nodes] = summary
+        
+    return data
+
+def generate_pdf():
+    data = load_all_results()
+    if not data:
+        print("No simulation results found to generate PDF.")
+        return False
+        
+    print(f"Loaded results for scenarios: {list(data.keys())}")
+    
+    # Set plot style for academic paper look
+    plt.rcParams.update({
+        'font.size': 10,
+        'axes.labelsize': 11,
+        'axes.titlesize': 12,
+        'xtick.labelsize': 9,
+        'ytick.labelsize': 9,
+        'figure.titlesize': 14,
+        'font.family': 'serif',
+        'grid.alpha': 0.3,
+        'grid.linestyle': '--'
+    })
+    
+    # Colors matching a professional academic palette (vibrant yet clean)
+    color_bfnd_ble = '#0066CC'  # Professional Blue
+    color_bfnd = '#E68A00'      # Academic Amber
+    color_find = '#CC3333'      # Professional Red
+    
+    with PdfPages(OUTPUT_PDF) as pdf:
+        
+        # ------------------ PAGE 1: TITLE & SUMMARY TABLE ------------------
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        ax.axis('off')
+        
+        # Title block
+        fig.text(0.5, 0.95, "Battery-Free Neighbor Discovery (BFND) Simulation Analysis", 
+                 ha='center', va='top', fontsize=15, weight='bold')
+        fig.text(0.5, 0.92, "Comparative Evaluation: BFND-BLE (with advDelay) vs. BFND vs. FIND", 
+                 ha='center', va='top', fontsize=12, style='italic')
+        fig.text(0.5, 0.89, f"Generated on: {np.datetime64('now')}", 
+                 ha='center', va='top', fontsize=9, color='gray')
+        
+        # Executive Summary text
+        summary_text = (
+            "Executive Summary:\n"
+            "This report evaluates the performance of the Battery-Free Neighbor Discovery (BFND) protocol "
+            "against the baseline FIND protocol under a realistic, non-phased asynchronous slotted time model. "
+            "We compare three protocol configurations: (1) BFND-BLE (which introduces a randomized BLE-style "
+            "0-10 ms advDelay to prevent consecutive slot collisions), (2) original BFND (deterministic slot "
+            "selection, advDelay=0), and (3) FIND. Simulations were run using raw time-synchronized energy "
+            "harvesting traces from 5 scenarios: Office, Stairs, Washer, Jogging, and Cars. "
+            "Discovery latency is evaluated for networks of 2 to 5 nodes. A timeout is declared after 1,000 cycles."
+        )
+        fig.text(0.1, 0.80, summary_text, ha='left', va='top', fontsize=10, wrap=True)
+        
+        # Table of key results
+        table_data = [["Scenario", "Nodes", "BFND-BLE Mean", "BFND Mean", "FIND Mean", "BLE-TO %", "BFND-TO %", "FIND-TO %"]]
+        
+        for scenario in sorted(data.keys()):
+            for nodes in sorted(data[scenario].keys()):
+                s = data[scenario][nodes]
+                total = s.total_rows if s.total_rows > 0 else 1
+                bfnd_ble_mean = f"{s.bfnd_ble_mean:.1f}" if s.bfnd_ble_mean is not None else "Timeout"
+                bfnd_mean = f"{s.bfnd_mean:.1f}" if s.bfnd_mean is not None else "Timeout"
+                find_mean = f"{s.find_mean:.1f}" if s.find_mean is not None else "Timeout"
+                bfnd_ble_to_pct = f"{(s.bfnd_ble_missing / total)*100:.1f}%"
+                bfnd_to_pct = f"{(s.bfnd_missing / total)*100:.1f}%"
+                find_to_pct = f"{(s.find_missing / total)*100:.1f}%"
+                
+                table_data.append([
+                    scenario.capitalize(),
+                    str(nodes),
+                    bfnd_ble_mean,
+                    bfnd_mean,
+                    find_mean,
+                    bfnd_ble_to_pct,
+                    bfnd_to_pct,
+                    find_to_pct
+                ])
+                
+        # Draw table
+        if len(table_data) > 1:
+            table = ax.table(cellText=table_data, loc='center', cellLoc='center', 
+                             colWidths=[0.14, 0.08, 0.16, 0.16, 0.16, 0.1, 0.1, 0.1])
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            # Make header bold
+            for (row, col), cell in table.get_celld().items():
+                if row == 0:
+                    cell.set_text_props(weight='bold')
+                    cell.set_facecolor('#E6F2FF')
+                elif row % 2 == 0:
+                    cell.set_facecolor('#F9F9F9')
+                    
+        pdf.savefig(fig)
+        plt.close(fig)
+        
+        # ------------------ PAGE 2: LATENCY COMPARISON PLOTS ------------------
+        # Grid of line plots (one per scenario) showing Mean Latency vs Node Count
+        scenarios = sorted(data.keys())
+        fig, axes = plt.subplots(3, 2, figsize=(8.5, 11))
+        axes = axes.flatten()
+        
+        fig.suptitle("Mean Discovery Latency comparison (ASNs)\n(Lower is better)", fontsize=13, y=0.98, weight='bold')
+        
+        for idx, scenario in enumerate(scenarios):
+            ax = axes[idx]
+            node_counts = sorted(data[scenario].keys())
+            
+            bfnd_ble_means = []
+            bfnd_means = []
+            find_means = []
+            valid_nodes = []
+            
+            for nodes in node_counts:
+                s = data[scenario][nodes]
+                bfnd_ble_means.append(s.bfnd_ble_mean if s.bfnd_ble_mean is not None else np.nan)
+                bfnd_means.append(s.bfnd_mean if s.bfnd_mean is not None else np.nan)
+                find_means.append(s.find_mean if s.find_mean is not None else np.nan)
+                valid_nodes.append(nodes)
+            
+            if valid_nodes:
+                ax.plot(valid_nodes, bfnd_ble_means, marker='o', color=color_bfnd_ble, label='BFND-BLE', linewidth=2)
+                ax.plot(valid_nodes, bfnd_means, marker='^', color=color_bfnd, label='BFND', linewidth=2)
+                ax.plot(valid_nodes, find_means, marker='s', color=color_find, label='FIND', linewidth=2)
+                
+            ax.set_title(f"{scenario.capitalize()} Trace")
+            ax.set_xlabel("Number of Nodes")
+            ax.set_ylabel("Mean ASN")
+            ax.set_xticks(node_counts)
+            ax.grid(True)
+            if idx == 0:
+                ax.legend()
+                
+        # Hide any unused subplots
+        for idx in range(len(scenarios), len(axes)):
+            fig.delaxes(axes[idx])
+            
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        pdf.savefig(fig)
+        plt.close(fig)
+        
+        # ------------------ PAGE 3: TIMEOUT RATE COMPARISON ------------------
+        # Bar charts comparing timeout rates
+        fig, axes = plt.subplots(3, 2, figsize=(8.5, 11))
+        axes = axes.flatten()
+        
+        fig.suptitle("Timeout/Failure Rates comparison (% of runs)\n(Lower is better)", fontsize=13, y=0.98, weight='bold')
+        
+        for idx, scenario in enumerate(scenarios):
+            ax = axes[idx]
+            node_counts = sorted(data[scenario].keys())
+            
+            bfnd_ble_to = []
+            bfnd_to = []
+            find_to = []
+            
+            for nodes in node_counts:
+                s = data[scenario][nodes]
+                total = s.total_rows if s.total_rows > 0 else 1
+                bfnd_ble_to.append((s.bfnd_ble_missing / total) * 100.0)
+                bfnd_to.append((s.bfnd_missing / total) * 100.0)
+                find_to.append((s.find_missing / total) * 100.0)
+                
+            x = np.array(node_counts)
+            width = 0.25
+            
+            ax.bar(x - width, bfnd_ble_to, width, color=color_bfnd_ble, label='BFND-BLE')
+            ax.bar(x, bfnd_to, width, color=color_bfnd, label='BFND')
+            ax.bar(x + width, find_to, width, color=color_find, label='FIND')
+            
+            ax.set_title(f"{scenario.capitalize()} Trace")
+            ax.set_xlabel("Number of Nodes")
+            ax.set_ylabel("Timeout Rate (%)")
+            ax.set_xticks(node_counts)
+            ax.grid(True, axis='y')
+            if idx == 0:
+                ax.legend()
+                
+        for idx in range(len(scenarios), len(axes)):
+            fig.delaxes(axes[idx])
+            
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        pdf.savefig(fig)
+        plt.close(fig)
+        
+        # ------------------ PAGE 4: LATENCY CDF CURVES (3-node case) ------------------
+        # Plot CDF curves for 3-node configurations across scenarios
+        fig, axes = plt.subplots(3, 2, figsize=(8.5, 11))
+        axes = axes.flatten()
+        
+        fig.suptitle("Cumulative Distribution Function (CDF) of Discovery Latency (3 Nodes)\n(Steeper/further left is better)", fontsize=13, y=0.98, weight='bold')
+        
+        target_nodes = 3
+        
+        for idx, scenario in enumerate(scenarios):
+            ax = axes[idx]
+            if target_nodes not in data[scenario]:
+                ax.text(0.5, 0.5, f"No 3-node data for {scenario}", ha='center', va='center')
+                ax.set_title(f"{scenario.capitalize()} Trace")
+                continue
+                
+            s = data[scenario][target_nodes]
+            
+            # Compute CDFs
+            if s.bfnd_ble_values:
+                sorted_ours = np.sort(s.bfnd_ble_values)
+                y_ours = np.arange(1, len(sorted_ours) + 1) / len(sorted_ours)
+                # scale to include timeouts in CDF total probability
+                y_ours = y_ours * (len(s.bfnd_ble_values) / s.total_rows)
+                ax.plot(sorted_ours, y_ours, color=color_bfnd_ble, label='BFND-BLE', linewidth=2)
+                
+            if s.bfnd_values:
+                sorted_bfnd = np.sort(s.bfnd_values)
+                y_bfnd = np.arange(1, len(sorted_bfnd) + 1) / len(sorted_bfnd)
+                y_bfnd = y_bfnd * (len(s.bfnd_values) / s.total_rows)
+                ax.plot(sorted_bfnd, y_bfnd, color=color_bfnd, label='BFND', linewidth=2)
+                
+            if s.find_values:
+                sorted_base = np.sort(s.find_values)
+                y_base = np.arange(1, len(sorted_base) + 1) / len(sorted_base)
+                y_base = y_base * (len(s.find_values) / s.total_rows)
+                ax.plot(sorted_base, y_base, color=color_find, label='FIND', linewidth=2)
+                
+            ax.set_xscale('log')
+            ax.set_title(f"{scenario.capitalize()} Trace")
+            ax.set_xlabel("Discovery Latency (ASNs)")
+            ax.set_ylabel("P(Discovery <= X)")
+            ax.set_xlim(100, 1000000)
+            ax.set_ylim(0, 1.0)
+            ax.grid(True, which="both", ls="-")
+            if idx == 0:
+                ax.legend()
+                
+        for idx in range(len(scenarios), len(axes)):
+            fig.delaxes(axes[idx])
+            
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        pdf.savefig(fig)
+        plt.close(fig)
+        
+        # ------------------ PAGE 5: REPRESENTATIVE TIMELINE ------------------
+        timeline_img_path = WORKSPACE_DIR / "timeline_comparison.png"
+        if timeline_img_path.exists():
+            fig, ax = plt.subplots(figsize=(8.5, 11))
+            ax.axis('off')
+            fig.text(0.5, 0.95, "Representative Protocol State & Voltage Timeline Comparison", 
+                     ha='center', va='top', fontsize=13, weight='bold')
+            fig.text(0.5, 0.92, "Capacitor voltages and active states (ADVERTISE / SCAN) over time", 
+                     ha='center', va='top', fontsize=10, style='italic')
+            
+            img = plt.imread(str(timeline_img_path))
+            ax_img = fig.add_axes([0.05, 0.1, 0.9, 0.75])
+            ax_img.imshow(img)
+            ax_img.axis('off')
+            
+            pdf.savefig(fig)
+            plt.close(fig)
+            
+    print(f"Successfully generated results analysis PDF: {OUTPUT_PDF}")
+    return True
+
+if __name__ == "__main__":
+    generate_pdf()

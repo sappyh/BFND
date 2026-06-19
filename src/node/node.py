@@ -27,6 +27,12 @@ class Node:
         # nRF52840 active discharge: full active power (9.9 mW) for a 1 ms slot
         self.ebusy_wait = float(ebusy_wait)
 
+        # --- Precomputed Energy Thresholds (saves math.sqrt calls in hot loop) ---
+        self.E_on = 0.5 * self.capacitance * self.von * self.von
+        self.E_off = 0.5 * self.capacitance * self.voff * self.voff
+        self.E_brownout = 0.5 * self.capacitance * self.v_brownout * self.v_brownout
+        self.E_max = 0.5 * self.capacitance * self.v_max_thr * self.v_max_thr
+
         # --- Timing Parameters ---
         self.nominal_time_period = nominal_time_period
         self.ASN = 0
@@ -57,40 +63,36 @@ class Node:
         self.logger.info(f"Initialized Node {self.id}")
 
     def _available_energy_above_voff(self):
-        voff_energy = 0.5 * self.capacitance * self.voff * self.voff
-        return max(0.0, self.energy_level - voff_energy)
+        return max(0.0, self.energy_level - self.E_off)
 
     def compute_energy_level(self, energy_in):
-        prev_voltage = math.sqrt(max(0.0, 2 * self.energy_level / self.capacitance))
-
+        prev_energy = self.energy_level
         self.energy_level += energy_in
         if self.energy_level < 0:
             self.energy_level = 0.0
 
-        voltage = math.sqrt(max(0.0, 2 * self.energy_level / self.capacitance))
-
-        if prev_voltage < self.voff and voltage >= self.voff:
+        if prev_energy < self.E_off and self.energy_level >= self.E_off:
             if self.protocol:
                 self.protocol.on_voltage_above_voff(self.ASN)
 
-        if prev_voltage < self.v_max_thr and voltage >= self.v_max_thr:
+        if prev_energy < self.E_max and self.energy_level >= self.E_max:
             if self.protocol and hasattr(self.protocol, 'on_voltage_above_vmax_thr'):
                 self.protocol.on_voltage_above_vmax_thr(self.ASN)
 
-        if prev_voltage > self.von and voltage <= self.von:
+        if prev_energy > self.E_on and self.energy_level <= self.E_on:
             if self.protocol and hasattr(self.protocol, 'on_voltage_below_von'):
                 self.protocol.on_voltage_below_von(self.ASN)
 
-        if voltage < self.v_brownout:
+        if self.energy_level < self.E_brownout:
             self.reset()
 
-        if self.state == STATE.OFF and voltage >= self.von:
+        if self.state == STATE.OFF and self.energy_level >= self.E_on:
             self.state = STATE.ON
             self.logger.debug(f"Node {self.id} turned ON at ASN {self.ASN}")
             if self.protocol:
                 self.protocol.on_turn_on(self.ASN)
 
-        elif self.state == STATE.ON and voltage < self.voff:
+        elif self.state == STATE.ON and self.energy_level < self.E_off:
             self.state = STATE.OFF
             self.logger.debug(f"Node {self.id} turned OFF at ASN {self.ASN} due to low voltage")
             if self.protocol:
@@ -100,14 +102,20 @@ class Node:
         if self.state == STATE.ON:
             cost = 0.0
             if action_to_do == ACTION.ADVERTISE:
-                self.radio.advertise(self.ASN, self.id, self.phase_shift)
+                # Add slot-level execution/latency jitter (+/- 10 us)
+                jitter = self.rng.uniform(-0.01, 0.01)
+                actual_phase = (self.phase_shift + jitter + 0.5) % 1.0 - 0.5
+                self.radio.advertise(self.ASN, self.id, actual_phase)
                 self.metrics["adv_sent"] += 1
                 cost = self.eadv
                 self.logger.debug(f"Node {self.id} performing ADV at ASN {self.ASN}")
             elif action_to_do == ACTION.SCAN:
+                # Add slot-level execution/latency jitter (+/- 10 us)
+                jitter = self.rng.uniform(-0.01, 0.01)
+                actual_phase = (self.phase_shift + jitter + 0.5) % 1.0 - 0.5
                 # Get escan cost from protocol (defaults to 0 if not present)
                 escan = getattr(self.protocol, 'escan', 0.0)
-                self.radio.scan(self.ASN, self.id, self.phase_shift)
+                self.radio.scan(self.ASN, self.id, actual_phase)
                 if self.protocol and hasattr(self.protocol, 'metrics'):
                     self.protocol.metrics["scan_sent"] = self.protocol.metrics.get("scan_sent", 0) + 1
                 cost = escan
@@ -147,13 +155,43 @@ class Node:
         print(f"------------------------------------")
 
     def run_one_time_step(self):
-        clock_tick = self.clock_subscriber.get_message()
+        clock_tick = self.clock_subscriber.get_message() if self.clock_subscriber else None
         if clock_tick is not None and clock_tick > self.ASN:
             self.ASN = clock_tick
         elif clock_tick is None and self.ASN == 0:
             pass
 
+        # Model crystal clock frequency drift (+/- 20 ppm)
+        # range: [-0.00002, 0.00002] ms drift per slot
+        drift = self.rng.uniform(-2e-5, 2e-5)
+        self.phase_shift = (self.phase_shift + drift + 0.5) % 1.0 - 0.5
+
         harvested_energy = self.energy_harvester.get_energy()
+        self.compute_energy_level(harvested_energy)
+
+        self.action = ACTION.SLEEP
+
+        if self.state == STATE.ON:
+            self.ran_once = True
+            if self.runtype == RUN_TYPE.ADVERTISING:
+                self.action = ACTION.ADVERTISE
+            elif self.runtype == RUN_TYPE.SCANNING:
+                self.action = ACTION.SCAN
+            elif self.runtype == RUN_TYPE.NORMAL:
+                if self.protocol:
+                    self.action = self.protocol.decide_action(self.ASN, self._available_energy_above_voff())
+
+        self.do_action(self.action)
+
+    def run_one_time_step_fast(self, slot):
+        self.ASN = slot
+
+        # Model crystal clock frequency drift (+/- 20 ppm)
+        # range: [-0.00002, 0.00002] ms drift per slot
+        drift = self.rng.uniform(-2e-5, 2e-5)
+        self.phase_shift = (self.phase_shift + drift + 0.5) % 1.0 - 0.5
+
+        harvested_energy = self.energy_harvester.get_energy_fast(slot)
         self.compute_energy_level(harvested_energy)
 
         self.action = ACTION.SLEEP

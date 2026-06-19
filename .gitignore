@@ -16,4 +16,8 @@ simulation_results_ourmethod_node5_1000.txt
 *.patch
 *.pdf
 *.csv
+timeline_comparison.png
+old_results/
+results_*/
+scratch/
 

@@ -8,14 +8,14 @@ class RadioEvent(Enum):
     ADVERTISE = 1
     SCAN = 2
 
-def check_tx_overlap(p1, p2):
+def check_tx_overlap(t1, t2):
     def overlap(s1, e1, s2, e2):
         return max(s1, s2) < min(e1, e2)
     
-    return (overlap(p1, p1 + 0.048, p2, p2 + 0.048) or
-            overlap(p1, p1 + 0.048, p2 + 0.928, p2 + 0.976) or
-            overlap(p1 + 0.928, p1 + 0.976, p2, p2 + 0.048) or
-            overlap(p1 + 0.928, p1 + 0.976, p2 + 0.928, p2 + 0.976))
+    return (overlap(t1, t1 + 0.048, t2, t2 + 0.048) or
+            overlap(t1, t1 + 0.048, t2 + 0.928, t2 + 0.976) or
+            overlap(t1 + 0.928, t1 + 0.976, t2, t2 + 0.048) or
+            overlap(t1 + 0.928, t1 + 0.976, t2 + 0.928, t2 + 0.976))
 
 class AsyncRadioMessage:
     def __init__(self, ASN, radioEvent, nodeID, phase_shift=0.0, loglevel=logging.INFO):
@@ -30,24 +30,33 @@ class AsyncRadioMessage:
     def check_message(self, message):
         if message is None:
             return RADIO_STATE.FAILURE
-        if self.ASN == message.ASN:
-            if self.radioEvent == RadioEvent.ADVERTISE:
-                if message.radioEvent == RadioEvent.ADVERTISE:
-                    abs_diff = abs(self.phase_shift - message.phase_shift)
-                    # Node discovery succeeds if the absolute difference in phase shifts is between 88us (0.088ms) and 840us (0.840ms)
-                    if 0.088 <= abs_diff <= 0.840:
-                        self.logger.debug(f"ADV Success: Self Node {self.nodeID} heard ADV from Node {message.nodeID} at ASN {self.ASN}")
-                        return RADIO_STATE.SUCCESS
-                    else:
-                        return RADIO_STATE.FAILURE
-                else:
-                    return RADIO_STATE.FAILURE
-            elif self.radioEvent == RadioEvent.SCAN:
-                if message.radioEvent == RadioEvent.ADVERTISE:
-                    self.logger.debug(f"SCAN Success: Self Node {self.nodeID} heard ADV from Node {message.nodeID} at ASN {self.ASN}")
+        
+        t1 = self.ASN + self.phase_shift
+        t2 = message.ASN + message.phase_shift
+        
+        if self.radioEvent == RadioEvent.ADVERTISE:
+            if message.radioEvent == RadioEvent.ADVERTISE:
+                abs_diff = abs(t1 - t2)
+                # Node discovery succeeds if the absolute difference in physical times is between 88us (0.088ms) and 840us (0.840ms)
+                if 0.088 <= abs_diff <= 0.840:
+                    self.logger.debug(f"ADV Success: Self Node {self.nodeID} heard ADV from Node {message.nodeID} at ASN {self.ASN} (t1={t1:.3f}, t2={t2:.3f})")
                     return RADIO_STATE.SUCCESS
                 else:
                     return RADIO_STATE.FAILURE
+            else:
+                return RADIO_STATE.FAILURE
+        elif self.radioEvent == RadioEvent.SCAN:
+            if message.radioEvent == RadioEvent.ADVERTISE:
+                # Scanner active in [t1, t1 + 1.0]. Advertiser TX1 in [t2, t2 + 0.048], TX2 in [t2 + 0.928, t2 + 0.976]
+                tx1_in = (t1 <= t2) and (t2 + 0.048 <= t1 + 1.0)
+                tx2_in = (t1 <= t2 + 0.928) and (t2 + 0.976 <= t1 + 1.0)
+                if tx1_in or tx2_in:
+                    self.logger.debug(f"SCAN Success: Self Node {self.nodeID} heard ADV from Node {message.nodeID} at ASN {self.ASN} (t1={t1:.3f}, t2={t2:.3f})")
+                    return RADIO_STATE.SUCCESS
+                else:
+                    return RADIO_STATE.FAILURE
+            else:
+                return RADIO_STATE.FAILURE
         return RADIO_STATE.FAILURE
 
 class AsyncRadio(RadioInterface):
@@ -58,6 +67,7 @@ class AsyncRadio(RadioInterface):
         self.subscribers = []
         self.subscribe_done = False
         self.receive_message_outcome = RADIO_STATE.FAILURE
+        self.history_received_messages = []
         self.logger = logging.getLogger(f"Radio_{id(self)}")
         self.logger.setLevel(loglevel)
         self.logger.disabled = True
@@ -126,15 +136,35 @@ class AsyncRadio(RadioInterface):
             self.subscribe_done = True
             return
 
-        received_messages = []
+        new_messages = []
         for sub in self.subscribers:
             n_msgs = sub.get_number_of_messages()
             for _ in range(n_msgs):
                 msg = sub.get_message()
                 if msg:
-                    received_messages.append(msg)
+                    new_messages.append(msg)
                     
-        n_messages = len(received_messages)
+        # Add new messages to history
+        self.history_received_messages.extend(new_messages)
+
+        # Determine current ASN for history purging
+        if self.transmitted_message is not None:
+            current_asn = self.transmitted_message.ASN
+        elif new_messages:
+            current_asn = max(msg.ASN for msg in new_messages)
+        elif self.history_received_messages:
+            current_asn = max(msg.ASN for msg in self.history_received_messages)
+        else:
+            current_asn = None
+
+        if current_asn is not None:
+            # Purge messages older than current_asn - 2
+            self.history_received_messages = [
+                msg for msg in self.history_received_messages
+                if msg.ASN >= current_asn - 2
+            ]
+
+        n_messages = len(self.history_received_messages)
 
         current_outcome = RADIO_STATE.FAILURE
 
@@ -142,11 +172,11 @@ class AsyncRadio(RadioInterface):
             if n_messages == 0:
                 current_outcome = RADIO_STATE.FAILURE
             elif n_messages == 1:
-                current_outcome = self.transmitted_message.check_message(received_messages[0])
+                current_outcome = self.transmitted_message.check_message(self.history_received_messages[0])
                 if current_outcome == RADIO_STATE.SUCCESS:
                     if self.transmitted_message.radioEvent == RadioEvent.ADVERTISE:
-                        self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction with Node {received_messages[0].nodeID} at ASN {self.transmitted_message.ASN}")
-                        self.last_interacted_node_id = received_messages[0].nodeID
+                        self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction with Node {self.history_received_messages[0].nodeID} at ASN {self.transmitted_message.ASN}")
+                        self.last_interacted_node_id = self.history_received_messages[0].nodeID
                     else:
                         self.logger.debug(f"Radio {id(self)} (Node {self.transmitted_message.nodeID}): Successful interaction (Energy Detected) at ASN {self.transmitted_message.ASN}")
                         self.last_interacted_node_id = None
@@ -154,12 +184,14 @@ class AsyncRadio(RadioInterface):
                 ## Multiple messages is allowed with Scan 
                 if self.transmitted_message.radioEvent == RadioEvent.ADVERTISE:
                     successful_msgs = []
-                    for i, msg in enumerate(received_messages):
+                    for i, msg in enumerate(self.history_received_messages):
                         if self.transmitted_message.check_message(msg) == RADIO_STATE.SUCCESS:
                             collides = False
-                            for j, other_msg in enumerate(received_messages):
+                            for j, other_msg in enumerate(self.history_received_messages):
                                 if i != j:
-                                    if check_tx_overlap(msg.phase_shift, other_msg.phase_shift):
+                                    t1 = msg.ASN + msg.phase_shift
+                                    t2 = other_msg.ASN + other_msg.phase_shift
+                                    if check_tx_overlap(t1, t2):
                                         collides = True
                                         break
                             if not collides:

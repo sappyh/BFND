@@ -22,6 +22,10 @@ class ConstantHarvester(HarvesterInterface):
         self.cached_energy = self.power
         return self.power
 
+    def get_energy_fast(self, slot):
+        self.cached_energy = self.power
+        return self.power
+
     def close(self):
         if self.clock_subscriber:
             try:

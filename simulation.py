@@ -322,7 +322,6 @@ def setup_simulation_environment(config_params, run_seed_sequence, logger):
 
 def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
     networks = env['networks']
-    global_clock = env['global_clock']
 
     discovery_asns = ['N/A'] * len(networks)
     network_discovered = [False] * len(networks)
@@ -330,27 +329,29 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
     last_slot_run = -1
     for slot in range(total_slots):
         last_slot_run = slot
-        global_clock.tick()
         
         for k, net in enumerate(networks):
             if not network_discovered[k]:
+                any_adv = False
                 for node in net['nodes']:
-                    node.run_one_time_step()
-        
-        for k, net in enumerate(networks):
-            if not network_discovered[k]:
-                for radio in net['radios']:
-                    radio.publish()
+                    node.run_one_time_step_fast(slot)
+                    if node.action == ACTION.ADVERTISE:
+                        any_adv = True
                 
-        for k, net in enumerate(networks):
-            if not network_discovered[k]:
-                for radio in net['radios']:
-                    radio.subscribe()
-            
-        for k, net in enumerate(networks):
-            if not network_discovered[k]:
-                for node in net['nodes']:
-                    node.evaluate_time_step()
+                if any_adv:
+                    for radio in net['radios']:
+                        radio.publish()
+                    for radio in net['radios']:
+                        radio.subscribe()
+                    for node in net['nodes']:
+                        node.evaluate_time_step()
+                else:
+                    for node in net['nodes']:
+                        node.radio.subscribe_done = True
+                        node.radio.transmitted_message = None
+                        node.radio.transmit_message = None
+                        node.radio.receive_message_outcome = RADIO_STATE.FAILURE
+                        node.radio.last_interacted_node_id = None
             
         for k, net in enumerate(networks):
             if not network_discovered[k]:

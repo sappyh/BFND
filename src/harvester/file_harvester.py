@@ -100,12 +100,14 @@ class FileHarvester(HarvesterInterface):
                     part1 = np.array(part1)
                 if not isinstance(part2, np.ndarray):
                     part2 = np.array(part2)
-                self.energy_buffer = np.concatenate((part1, part2))
+                raw_data = np.concatenate((part1, part2))
             else:
-                self.energy_buffer = dataset[slice_start : slice_end]
+                raw_data = dataset[slice_start : slice_end]
+                if not isinstance(raw_data, np.ndarray):
+                    raw_data = np.array(raw_data)
 
-            if not isinstance(self.energy_buffer, np.ndarray):
-                self.energy_buffer = np.array(self.energy_buffer)
+            # Pre-sum raw data into tick-level energy values
+            self.energy_buffer = np.sum(raw_data.reshape(-1, self.samples_per_tick), axis=1) * self.file_sample_period
 
             self.buffer_ptr = 0
             self.offset = slice_end % self.len
@@ -132,40 +134,22 @@ class FileHarvester(HarvesterInterface):
                     self.cached_energy = 0.0
                     return 0.0
 
-            try:
-                buffer_slice_start = self.buffer_ptr
-                buffer_slice_end = self.buffer_ptr + self.samples_per_tick
-
-                if buffer_slice_start >= len(self.energy_buffer):
-                    if not self._load_file_buffer(new_tick):
-                        self.cached_energy = 0.0
-                        return 0.0
-                    if self.energy_buffer is None:
-                        self.cached_energy = 0.0
-                        return 0.0
-                    buffer_slice_start = self.buffer_ptr
-                    buffer_slice_end = self.buffer_ptr + self.samples_per_tick
-
-                if buffer_slice_end > len(self.energy_buffer):
-                    buffer_slice_end = len(self.energy_buffer)
-
-                if buffer_slice_start >= buffer_slice_end:
-                    self.cached_energy = 0.0
-                    return 0.0
-
-                energy_data_slice = self.energy_buffer[buffer_slice_start : buffer_slice_end]
-                energy_in = np.sum(energy_data_slice) * self.file_sample_period
-                self.buffer_ptr = buffer_slice_end
-                self.cached_energy = energy_in
-                return energy_in
-            except Exception as e:
-                self.logger.error(f"Error processing energy buffer slice: {e}", exc_info=True)
-                self.energy_buffer = None
-                self.cached_energy = 0.0
-                return 0.0
+            energy_in = self.energy_buffer[self.buffer_ptr]
+            self.buffer_ptr += 1
+            self.cached_energy = energy_in
+            return energy_in
         except Exception as e:
             self.logger.error(f"Critical error in get_energy: {e}", exc_info=True)
             return 0.0
+
+    def get_energy_fast(self, slot):
+        self.last_tick = slot
+        if self.energy_buffer is None or self.buffer_ptr >= len(self.energy_buffer):
+            if not self._load_file_buffer(slot):
+                return 0.0
+        val = self.energy_buffer[self.buffer_ptr]
+        self.buffer_ptr += 1
+        return val
 
     def close(self):
         if self.clock_subscriber:
@@ -181,4 +165,5 @@ class FileHarvester(HarvesterInterface):
             except Exception as e:
                 self.logger.warning(f"Error closing HDF5 file: {e}")
             self.hf = None
+
                 

@@ -25,6 +25,10 @@ class GaussianHarvester(HarvesterInterface):
         self.cached_energy = max(0.0, random.gauss(self.mean, self.std))
         return self.cached_energy
 
+    def get_energy_fast(self, slot):
+        self.cached_energy = max(0.0, random.gauss(self.mean, self.std))
+        return self.cached_energy
+
     def close(self):
         if self.clock_subscriber:
             try:

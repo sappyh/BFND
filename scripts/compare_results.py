@@ -15,43 +15,82 @@ NON_NUMERIC_VALUES = {"", "N/A", "Timeout", "RunError", "FutureError"}
 class ResultSummary:
     path: Path
     total_rows: int
-    ours_values: list[int]
-    baseline_values: list[int]
-    paired_values: list[tuple[int, int]]
-    ours_missing: int
-    baseline_missing: int
+    bfnd_ble_values: list[int]
+    bfnd_values: list[int]
+    find_values: list[int]
+    paired_bfnd_ble_find: list[tuple[int, int]]
+    paired_bfnd_find: list[tuple[int, int]]
+    paired_bfnd_ble_bfnd: list[tuple[int, int]]
+    bfnd_ble_missing: int
+    bfnd_missing: int
+    find_missing: int
+
+    @property
+    def ours_values(self): return self.bfnd_ble_values
+    @property
+    def baseline_values(self): return self.find_values
+    @property
+    def paired_values(self): return self.paired_bfnd_ble_find
+    @property
+    def ours_missing(self): return self.bfnd_ble_missing
+    @property
+    def baseline_missing(self): return self.find_missing
+
+    @property
+    def bfnd_ble_mean(self) -> float | None:
+        return statistics.fmean(self.bfnd_ble_values) if self.bfnd_ble_values else None
+
+    @property
+    def bfnd_mean(self) -> float | None:
+        return statistics.fmean(self.bfnd_values) if self.bfnd_values else None
+
+    @property
+    def find_mean(self) -> float | None:
+        return statistics.fmean(self.find_values) if self.find_values else None
+
+    @property
+    def bfnd_ble_median(self) -> float | None:
+        return statistics.median(self.bfnd_ble_values) if self.bfnd_ble_values else None
+
+    @property
+    def bfnd_median(self) -> float | None:
+        return statistics.median(self.bfnd_values) if self.bfnd_values else None
+
+    @property
+    def find_median(self) -> float | None:
+        return statistics.median(self.find_values) if self.find_values else None
 
     @property
     def ours_mean(self) -> float | None:
-        return statistics.fmean(self.ours_values) if self.ours_values else None
+        return self.bfnd_ble_mean
 
     @property
     def baseline_mean(self) -> float | None:
-        return statistics.fmean(self.baseline_values) if self.baseline_values else None
+        return self.find_mean
 
     @property
     def ours_median(self) -> float | None:
-        return statistics.median(self.ours_values) if self.ours_values else None
+        return self.bfnd_ble_median
 
     @property
     def baseline_median(self) -> float | None:
-        return statistics.median(self.baseline_values) if self.baseline_values else None
+        return self.find_median
 
     @property
     def ours_min(self) -> int | None:
-        return min(self.ours_values) if self.ours_values else None
+        return min(self.bfnd_ble_values) if self.bfnd_ble_values else None
 
     @property
     def ours_max(self) -> int | None:
-        return max(self.ours_values) if self.ours_values else None
+        return max(self.bfnd_ble_values) if self.bfnd_ble_values else None
 
     @property
     def baseline_min(self) -> int | None:
-        return min(self.baseline_values) if self.baseline_values else None
+        return min(self.find_values) if self.find_values else None
 
     @property
     def baseline_max(self) -> int | None:
-        return max(self.baseline_values) if self.baseline_values else None
+        return max(self.find_values) if self.find_values else None
 
     @property
     def paired_count(self) -> int:
@@ -104,42 +143,71 @@ def load_summary(path: Path) -> ResultSummary:
         if len(asn_cols) < 2:
             raise ValueError(f"{path} must have at least 2 ASN_ columns, found: {asn_cols}")
 
-        ours_col = next((c for c in asn_cols if "bfnd" in c.lower() or "ours" in c.lower()), asn_cols[0])
-        baseline_col = next((c for c in asn_cols if c != ours_col), asn_cols[1] if ours_col == asn_cols[0] else asn_cols[0])
+        bfnd_ble_col = next((c for c in asn_cols if "ble" in c.lower()), None)
+        bfnd_col = next((c for c in asn_cols if "bfnd" in c.lower() and "ble" not in c.lower()), None)
+        find_col = next((c for c in asn_cols if "find" in c.lower() or "baseline" in c.lower()), None)
+
+        # Fallbacks for backward compatibility
+        if not bfnd_ble_col:
+            bfnd_ble_col = next((c for c in asn_cols if "bfnd" in c.lower() or "ours" in c.lower()), asn_cols[0])
+        if not find_col:
+            find_col = next((c for c in asn_cols if c != bfnd_ble_col), asn_cols[-1])
+        if not bfnd_col:
+            bfnd_col = next((c for c in asn_cols if c != bfnd_ble_col and c != find_col), None)
 
         total_rows = 0
-        ours_values: list[int] = []
-        baseline_values: list[int] = []
-        paired_values: list[tuple[int, int]] = []
-        ours_missing = 0
-        baseline_missing = 0
+        bfnd_ble_values: list[int] = []
+        bfnd_values: list[int] = []
+        find_values: list[int] = []
+        
+        paired_bfnd_ble_find: list[tuple[int, int]] = []
+        paired_bfnd_find: list[tuple[int, int]] = []
+        paired_bfnd_ble_bfnd: list[tuple[int, int]] = []
+        
+        bfnd_ble_missing = 0
+        bfnd_missing = 0
+        find_missing = 0
 
         for row in reader:
             total_rows += 1
-            ours = parse_result_value(row.get(ours_col))
-            baseline = parse_result_value(row.get(baseline_col))
+            bfnd_ble = parse_result_value(row.get(bfnd_ble_col)) if bfnd_ble_col else None
+            bfnd = parse_result_value(row.get(bfnd_col)) if bfnd_col else None
+            find = parse_result_value(row.get(find_col)) if find_col else None
 
-            if ours is None:
-                ours_missing += 1
+            if bfnd_ble is None:
+                bfnd_ble_missing += 1
             else:
-                ours_values.append(ours)
+                bfnd_ble_values.append(bfnd_ble)
 
-            if baseline is None:
-                baseline_missing += 1
+            if bfnd is None:
+                bfnd_missing += 1
             else:
-                baseline_values.append(baseline)
+                bfnd_values.append(bfnd)
 
-            if ours is not None and baseline is not None:
-                paired_values.append((ours, baseline))
+            if find is None:
+                find_missing += 1
+            else:
+                find_values.append(find)
+
+            if bfnd_ble is not None and find is not None:
+                paired_bfnd_ble_find.append((bfnd_ble, find))
+            if bfnd is not None and find is not None:
+                paired_bfnd_find.append((bfnd, find))
+            if bfnd_ble is not None and bfnd is not None:
+                paired_bfnd_ble_bfnd.append((bfnd_ble, bfnd))
 
     return ResultSummary(
         path=path,
         total_rows=total_rows,
-        ours_values=ours_values,
-        baseline_values=baseline_values,
-        paired_values=paired_values,
-        ours_missing=ours_missing,
-        baseline_missing=baseline_missing,
+        bfnd_ble_values=bfnd_ble_values,
+        bfnd_values=bfnd_values,
+        find_values=find_values,
+        paired_bfnd_ble_find=paired_bfnd_ble_find,
+        paired_bfnd_find=paired_bfnd_find,
+        paired_bfnd_ble_bfnd=paired_bfnd_ble_bfnd,
+        bfnd_ble_missing=bfnd_ble_missing,
+        bfnd_missing=bfnd_missing,
+        find_missing=find_missing,
     )
 
 

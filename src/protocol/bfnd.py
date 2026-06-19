@@ -12,7 +12,7 @@ class BFNDState(Enum):
 
 
 class BFND(ProtocolInterface):
-    def __init__(self, alpha, eadv, escan, offset, nominal_time_period, node_id, rng, logger):
+    def __init__(self, alpha, eadv, escan, offset, nominal_time_period, node_id, rng, logger, use_adv_delay=False):
         self.alpha = float(alpha)
         self.eadv = float(eadv)
         self.escan = float(escan)
@@ -21,6 +21,7 @@ class BFND(ProtocolInterface):
         self.node_id = node_id
         self.rng = rng
         self.logger = logger
+        self.use_adv_delay = use_adv_delay
 
         self.channel_map = np.zeros(nominal_time_period)
         self.n_scans_per_charge = 1
@@ -61,11 +62,12 @@ class BFND(ProtocolInterface):
         if delay == 0:
             delay = self.nominal_time_period
 
-
-        self.next_adv_wakeup = asn + delay
+        # BLE-style advDelay: add a random delay of 0 to 10 slots (ms) to prevent consecutive collisions
+        adv_delay = int(self.rng.integers(0, 11)) if self.use_adv_delay else 0
+        self.next_adv_wakeup = asn + delay + adv_delay
         self.state = BFNDState.ADVERTISEMENT
         self.logger.debug(
-            f"Node {self.node_id} chose ADV, scheduled for ASN {self.next_adv_wakeup} (target slot {target_slot})"
+            f"Node {self.node_id} chose ADV, scheduled for ASN {self.next_adv_wakeup} (target slot {target_slot}, delay={delay}, advDelay={adv_delay})"
         )
 
     def _enter_scan_state(self):
