@@ -14,15 +14,13 @@ import compare_results
 RESULTS_DIR = WORKSPACE_DIR / "results"
 OUTPUT_PDF = WORKSPACE_DIR / "results_analysis.pdf"
 
-def load_all_results():
-    # Structure: results/<scenario>/results_config_<scenario>_*.tsv
-    # E.g. results/office/results_config_office_bfnd_2.tsv
+def load_all_results(directory):
     data = {}
     
-    if not RESULTS_DIR.exists():
+    if not directory.exists():
         return data
         
-    for tsv_file in RESULTS_DIR.glob("**/*.tsv"):
+    for tsv_file in directory.glob("**/*.tsv"):
         scenario = tsv_file.parent.name
         
         # Extract node count from name
@@ -45,7 +43,9 @@ def load_all_results():
     return data
 
 def generate_pdf():
-    data = load_all_results()
+    data = load_all_results(RESULTS_DIR)
+    old_data = load_all_results(WORKSPACE_DIR / "results_1000_cycles")
+    unpatched_data = load_all_results(WORKSPACE_DIR / "results_unpatched")
     if not data:
         print("No simulation results found to generate PDF.")
         return False
@@ -139,7 +139,96 @@ def generate_pdf():
         pdf.savefig(fig)
         plt.close(fig)
         
-        # ------------------ PAGE 2: LATENCY COMPARISON PLOTS ------------------
+        # ------------------ PAGE 2: IMPACT OF DRIFT, JITTER & BOUNDARY FIX ------------------
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        ax.axis('off')
+        
+        fig.text(0.5, 0.95, "Impact of Jitter, Clock Drift, and Cross-Slot Overlap Checks", 
+                 ha='center', va='top', fontsize=13, weight='bold')
+        fig.text(0.5, 0.92, "Comparing Unpatched (no sleep cost bug), Old (idealized slotted), and New (physical overlap) models", 
+                 ha='center', va='top', fontsize=9, style='italic')
+                 
+        explanation = (
+            "This section analyzes the transition of our simulator from the simplified discrete models to realistic continuous-time physics:\n"
+            "- Unpatched Model: Had a critical energy accounting bug (sleep cost self.esleep was not deducted for FIND/idle states).\n"
+            "  This gave nodes virtually unlimited sleep energy, causing artificially low timeout rates (~0-1%).\n"
+            "- Old Model (Patched, No Drift/Overlap Fix): Sleep energy is correctly accounted for, but slot boundary overlaps\n"
+            "  are strictly ignored. Nodes had to be in the exact same slot (self.ASN == message.ASN) to hear each other. This created blind spots\n"
+            "  and inflated the timeout rate (~17-19% for 2 nodes, ~34-37% for 3 nodes).\n"
+            "- New Model (With Drift/Overlap Fix): Models crystal frequency drift (+/-20 ppm), start jitter (+/-10 us), and absolute\n"
+            "  physical continuous-time overlaps. This resolves the slot-boundary blind spots, recovering valid interactions\n"
+            "  and successfully lowering timeout rates (~11-14% for 2 nodes, ~24-27% for 3 nodes)."
+        )
+        fig.text(0.08, 0.89, explanation, ha='left', va='top', fontsize=8.5, wrap=True)
+        
+        # Build comparison table
+        comp_table_data = [["Scenario", "Nodes", "Model Version", "BFND-BLE Mean", "FIND Mean", "BLE-TO %", "FIND-TO %"]]
+        for scenario in ('office', 'stairs', 'washer'):
+            for nodes in (2, 3):
+                # Unpatched row
+                if scenario in unpatched_data and nodes in unpatched_data[scenario]:
+                    u = unpatched_data[scenario][nodes]
+                    u_tot = u.total_rows if u.total_rows > 0 else 1
+                    comp_table_data.append([
+                        scenario.capitalize(),
+                        str(nodes),
+                        "Unpatched (No Sleep Cost)",
+                        f"{u.bfnd_ble_mean:.1f}" if u.bfnd_ble_mean is not None else "Timeout",
+                        f"{u.find_mean:.1f}" if u.find_mean is not None else "Timeout",
+                        f"{(u.bfnd_ble_missing / u_tot)*100:.1f}%",
+                        f"{(u.find_missing / u_tot)*100:.1f}%"
+                    ])
+                # Old row
+                if scenario in old_data and nodes in old_data[scenario]:
+                    o = old_data[scenario][nodes]
+                    o_tot = o.total_rows if o.total_rows > 0 else 1
+                    comp_table_data.append([
+                        "",
+                        "",
+                        "Old (No Drift/Overlap Fix)",
+                        f"{o.bfnd_ble_mean:.1f}" if o.bfnd_ble_mean is not None else "Timeout",
+                        f"{o.find_mean:.1f}" if o.find_mean is not None else "Timeout",
+                        f"{(o.bfnd_ble_missing / o_tot)*100:.1f}%",
+                        f"{(o.find_missing / o_tot)*100:.1f}%"
+                    ])
+                # New row
+                if scenario in data and nodes in data[scenario]:
+                    n = data[scenario][nodes]
+                    n_tot = n.total_rows if n.total_rows > 0 else 1
+                    comp_table_data.append([
+                        "",
+                        "",
+                        "New (With Drift/Overlap)",
+                        f"{n.bfnd_ble_mean:.1f}" if n.bfnd_ble_mean is not None else "Timeout",
+                        f"{n.find_mean:.1f}" if n.find_mean is not None else "Timeout",
+                        f"{(n.bfnd_ble_missing / n_tot)*100:.1f}%",
+                        f"{(n.find_missing / n_tot)*100:.1f}%"
+                    ])
+        
+        # Render table
+        if len(comp_table_data) > 1:
+            table = ax.table(cellText=comp_table_data, loc='center', cellLoc='center',
+                             colWidths=[0.14, 0.08, 0.32, 0.16, 0.16, 0.1, 0.1])
+            table.auto_set_font_size(False)
+            table.set_fontsize(7.5)
+            # Styling: header, alternating rows, bolding version names
+            for (row, col), cell in table.get_celld().items():
+                if row == 0:
+                    cell.set_text_props(weight='bold')
+                    cell.set_facecolor('#E6F2FF')
+                elif row > 0:
+                    # Highlight 'New' row version in light green to show improvement
+                    if (row - 1) % 3 == 2:
+                        cell.set_facecolor('#E6F7E6')
+                    elif (row - 1) % 3 == 1:
+                        cell.set_facecolor('#FFF2E6')
+                    else:
+                        cell.set_facecolor('#FFFFFF')
+                        
+        pdf.savefig(fig)
+        plt.close(fig)
+        
+        # ------------------ PAGE 3: LATENCY COMPARISON PLOTS ------------------
         # Grid of line plots (one per scenario) showing Mean Latency vs Node Count
         scenarios = sorted(data.keys())
         fig, axes = plt.subplots(3, 2, figsize=(8.5, 11))

@@ -154,6 +154,8 @@ def load_summary(path: Path) -> ResultSummary:
             find_col = next((c for c in asn_cols if c != bfnd_ble_col), asn_cols[-1])
         if not bfnd_col:
             bfnd_col = next((c for c in asn_cols if c != bfnd_ble_col and c != find_col), None)
+        if bfnd_col == bfnd_ble_col:
+            bfnd_col = None
 
         total_rows = 0
         bfnd_ble_values: list[int] = []
