@@ -15,30 +15,23 @@ NON_NUMERIC_VALUES = {"", "N/A", "Timeout", "RunError", "FutureError"}
 class ResultSummary:
     path: Path
     total_rows: int
-    bfnd_ble_values: list[int]
     bfnd_values: list[int]
     find_values: list[int]
-    paired_bfnd_ble_find: list[tuple[int, int]]
     paired_bfnd_find: list[tuple[int, int]]
-    paired_bfnd_ble_bfnd: list[tuple[int, int]]
-    bfnd_ble_missing: int
     bfnd_missing: int
     find_missing: int
 
     @property
-    def ours_values(self): return self.bfnd_ble_values
+    def ours_values(self): return self.bfnd_values
     @property
     def baseline_values(self): return self.find_values
     @property
-    def paired_values(self): return self.paired_bfnd_ble_find
+    def paired_values(self): return self.paired_bfnd_find
     @property
-    def ours_missing(self): return self.bfnd_ble_missing
+    def ours_missing(self): return self.bfnd_missing
     @property
     def baseline_missing(self): return self.find_missing
 
-    @property
-    def bfnd_ble_mean(self) -> float | None:
-        return statistics.fmean(self.bfnd_ble_values) if self.bfnd_ble_values else None
 
     @property
     def bfnd_mean(self) -> float | None:
@@ -47,10 +40,6 @@ class ResultSummary:
     @property
     def find_mean(self) -> float | None:
         return statistics.fmean(self.find_values) if self.find_values else None
-
-    @property
-    def bfnd_ble_median(self) -> float | None:
-        return statistics.median(self.bfnd_ble_values) if self.bfnd_ble_values else None
 
     @property
     def bfnd_median(self) -> float | None:
@@ -62,7 +51,7 @@ class ResultSummary:
 
     @property
     def ours_mean(self) -> float | None:
-        return self.bfnd_ble_mean
+        return self.bfnd_mean
 
     @property
     def baseline_mean(self) -> float | None:
@@ -70,7 +59,7 @@ class ResultSummary:
 
     @property
     def ours_median(self) -> float | None:
-        return self.bfnd_ble_median
+        return self.bfnd_median
 
     @property
     def baseline_median(self) -> float | None:
@@ -78,11 +67,11 @@ class ResultSummary:
 
     @property
     def ours_min(self) -> int | None:
-        return min(self.bfnd_ble_values) if self.bfnd_ble_values else None
+        return min(self.bfnd_values) if self.bfnd_values else None
 
     @property
     def ours_max(self) -> int | None:
-        return max(self.bfnd_ble_values) if self.bfnd_ble_values else None
+        return max(self.bfnd_values) if self.bfnd_values else None
 
     @property
     def baseline_min(self) -> int | None:
@@ -143,43 +132,28 @@ def load_summary(path: Path) -> ResultSummary:
         if len(asn_cols) < 2:
             raise ValueError(f"{path} must have at least 2 ASN_ columns, found: {asn_cols}")
 
-        bfnd_ble_col = next((c for c in asn_cols if "ble" in c.lower()), None)
         bfnd_col = next((c for c in asn_cols if "bfnd" in c.lower() and "ble" not in c.lower()), None)
         find_col = next((c for c in asn_cols if "find" in c.lower() or "baseline" in c.lower()), None)
 
         # Fallbacks for backward compatibility
-        if not bfnd_ble_col:
-            bfnd_ble_col = next((c for c in asn_cols if "bfnd" in c.lower() or "ours" in c.lower()), asn_cols[0])
-        if not find_col:
-            find_col = next((c for c in asn_cols if c != bfnd_ble_col), asn_cols[-1])
         if not bfnd_col:
-            bfnd_col = next((c for c in asn_cols if c != bfnd_ble_col and c != find_col), None)
-        if bfnd_col == bfnd_ble_col:
-            bfnd_col = None
+            bfnd_col = next((c for c in asn_cols if "bfnd" in c.lower() or "ours" in c.lower()), asn_cols[0])
+        if not find_col:
+            find_col = next((c for c in asn_cols if c != bfnd_col), asn_cols[-1])
 
         total_rows = 0
-        bfnd_ble_values: list[int] = []
         bfnd_values: list[int] = []
         find_values: list[int] = []
         
-        paired_bfnd_ble_find: list[tuple[int, int]] = []
         paired_bfnd_find: list[tuple[int, int]] = []
-        paired_bfnd_ble_bfnd: list[tuple[int, int]] = []
         
-        bfnd_ble_missing = 0
         bfnd_missing = 0
         find_missing = 0
 
         for row in reader:
             total_rows += 1
-            bfnd_ble = parse_result_value(row.get(bfnd_ble_col)) if bfnd_ble_col else None
             bfnd = parse_result_value(row.get(bfnd_col)) if bfnd_col else None
             find = parse_result_value(row.get(find_col)) if find_col else None
-
-            if bfnd_ble is None:
-                bfnd_ble_missing += 1
-            else:
-                bfnd_ble_values.append(bfnd_ble)
 
             if bfnd is None:
                 bfnd_missing += 1
@@ -191,23 +165,15 @@ def load_summary(path: Path) -> ResultSummary:
             else:
                 find_values.append(find)
 
-            if bfnd_ble is not None and find is not None:
-                paired_bfnd_ble_find.append((bfnd_ble, find))
             if bfnd is not None and find is not None:
                 paired_bfnd_find.append((bfnd, find))
-            if bfnd_ble is not None and bfnd is not None:
-                paired_bfnd_ble_bfnd.append((bfnd_ble, bfnd))
 
     return ResultSummary(
         path=path,
         total_rows=total_rows,
-        bfnd_ble_values=bfnd_ble_values,
         bfnd_values=bfnd_values,
         find_values=find_values,
-        paired_bfnd_ble_find=paired_bfnd_ble_find,
         paired_bfnd_find=paired_bfnd_find,
-        paired_bfnd_ble_bfnd=paired_bfnd_ble_bfnd,
-        bfnd_ble_missing=bfnd_ble_missing,
         bfnd_missing=bfnd_missing,
         find_missing=find_missing,
     )

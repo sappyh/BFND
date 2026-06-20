@@ -17,7 +17,7 @@ log_level: INFO
 # Number of nodes for EACH protocol (e.g., 5 'ours' and 5 'baseline')
 num_nodes: 5
 # Duration of each simulation run in terms of nominal cycles
-num_cycles: 1000
+num_cycles: 5000
 
 # --- Node Specific Settings ---
 # Configuration for the first node instance of each protocol type

@@ -345,13 +345,6 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
                         radio.subscribe()
                     for node in net['nodes']:
                         node.evaluate_time_step()
-                else:
-                    for node in net['nodes']:
-                        node.radio.subscribe_done = True
-                        node.radio.transmitted_message = None
-                        node.radio.transmit_message = None
-                        node.radio.receive_message_outcome = RADIO_STATE.FAILURE
-                        node.radio.last_interacted_node_id = None
             
         for k, net in enumerate(networks):
             if not network_discovered[k]:

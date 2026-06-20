@@ -14,6 +14,9 @@ class Node:
         self.runtype = runtype
         self.rng = rng
         self.phase_shift = self.rng.uniform(-0.5, 0.5)
+        # Constant clock drift rate (+/- 20 ppm) for the duration of the run
+        self.clock_drift = self.rng.uniform(-2e-5, 2e-5)
+        self.last_phase_update_asn = 0
 
         # --- Energy Parameters ---
         self.capacitance = float(capacitance)
@@ -101,17 +104,23 @@ class Node:
     def do_action(self, action_to_do):
         if self.state == STATE.ON:
             cost = 0.0
+            if action_to_do == ACTION.ADVERTISE or action_to_do == ACTION.SCAN:
+                # Update phase shift with accumulated drift since last update
+                elapsed = self.ASN - self.last_phase_update_asn
+                if elapsed > 0:
+                    self.phase_shift = (self.phase_shift + elapsed * self.clock_drift + 0.5) % 1.0 - 0.5
+                    self.last_phase_update_asn = self.ASN
             if action_to_do == ACTION.ADVERTISE:
-                # Add slot-level execution/latency jitter (+/- 10 us)
-                jitter = self.rng.uniform(-0.01, 0.01)
+                # Add slot-level execution/latency jitter with phase dithering (+/- 150 us)
+                jitter = self.rng.uniform(-0.15, 0.15)
                 actual_phase = (self.phase_shift + jitter + 0.5) % 1.0 - 0.5
                 self.radio.advertise(self.ASN, self.id, actual_phase)
                 self.metrics["adv_sent"] += 1
                 cost = self.eadv
                 self.logger.debug(f"Node {self.id} performing ADV at ASN {self.ASN}")
             elif action_to_do == ACTION.SCAN:
-                # Add slot-level execution/latency jitter (+/- 10 us)
-                jitter = self.rng.uniform(-0.01, 0.01)
+                # Add slot-level execution/latency jitter with phase dithering (+/- 150 us)
+                jitter = self.rng.uniform(-0.15, 0.15)
                 actual_phase = (self.phase_shift + jitter + 0.5) % 1.0 - 0.5
                 # Get escan cost from protocol (defaults to 0 if not present)
                 escan = getattr(self.protocol, 'escan', 0.0)
@@ -161,11 +170,6 @@ class Node:
         elif clock_tick is None and self.ASN == 0:
             pass
 
-        # Model crystal clock frequency drift (+/- 20 ppm)
-        # range: [-0.00002, 0.00002] ms drift per slot
-        drift = self.rng.uniform(-2e-5, 2e-5)
-        self.phase_shift = (self.phase_shift + drift + 0.5) % 1.0 - 0.5
-
         harvested_energy = self.energy_harvester.get_energy()
         self.compute_energy_level(harvested_energy)
 
@@ -185,11 +189,6 @@ class Node:
 
     def run_one_time_step_fast(self, slot):
         self.ASN = slot
-
-        # Model crystal clock frequency drift (+/- 20 ppm)
-        # range: [-0.00002, 0.00002] ms drift per slot
-        drift = self.rng.uniform(-2e-5, 2e-5)
-        self.phase_shift = (self.phase_shift + drift + 0.5) % 1.0 - 0.5
 
         harvested_energy = self.energy_harvester.get_energy_fast(slot)
         self.compute_energy_level(harvested_energy)
@@ -213,5 +212,7 @@ class Node:
         self.state = STATE.OFF
         self.action = ACTION.SLEEP
         self.ran_once = False
+        self.phase_shift = self.rng.uniform(-0.5, 0.5)
+        self.last_phase_update_asn = self.ASN
         if self.protocol:
             self.protocol.reset(self.ASN)

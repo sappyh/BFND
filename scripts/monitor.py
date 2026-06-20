@@ -175,14 +175,13 @@ def main():
     # Compare results if available
     summaries = load_compare_results()
     if summaries:
-        print("\n# Results Comparison (BFND-BLE vs BFND vs FIND)")
-        print("| File | Runs | BFND-BLE Mean | BFND Mean | FIND Mean | BLE TO | BFND TO | FIND TO |")
-        print("| --- | --- | --- | --- | --- | --- | --- | --- |")
+        print("\n# Results Comparison (BFND vs FIND)")
+        print("| File | Runs | BFND Mean | FIND Mean | BFND TO | FIND TO |")
+        print("| --- | --- | --- | --- | --- | --- |")
         for s in summaries:
-            ble_mean = f"{s.bfnd_ble_mean:.1f}" if s.bfnd_ble_mean is not None else "-"
             bfnd_mean = f"{s.bfnd_mean:.1f}" if s.bfnd_mean is not None else "-"
             find_mean = f"{s.find_mean:.1f}" if s.find_mean is not None else "-"
-            print(f"| `{s.path.name}` | {s.total_rows} | {ble_mean} | {bfnd_mean} | {find_mean} | {s.bfnd_ble_missing} | {s.bfnd_missing} | {s.find_missing} |")
+            print(f"| `{s.path.name}` | {s.total_rows} | {bfnd_mean} | {find_mean} | {s.ours_missing} | {s.baseline_missing} |")
 
     # Timing metrics
     times = parse_simulation_times()

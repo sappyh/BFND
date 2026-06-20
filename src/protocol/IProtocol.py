@@ -45,7 +45,7 @@ class ProtocolFactory:
         from .find import Find
 
         protocol_type_lower = protocol_type.lower()
-        if protocol_type_lower in ('ours', 'bfnd', 'bfnd-ble', 'bfnd_ble'):
+        if protocol_type_lower in ('ours', 'bfnd'):
             alpha = kwargs.get('alpha')
             eadv = kwargs.get('eadv')
             escan = kwargs.get('escan')
@@ -54,8 +54,7 @@ class ProtocolFactory:
             node_id = kwargs.get('node_id')
             rng = kwargs.get('rng')
             logger = kwargs.get('logger')
-            use_adv_delay = protocol_type_lower in ('bfnd-ble', 'bfnd_ble')
-            return BFND(alpha, eadv, escan, offset, nominal_time_period, node_id, rng, logger, use_adv_delay=use_adv_delay)
+            return BFND(alpha, eadv, escan, offset, nominal_time_period, node_id, rng, logger)
         elif protocol_type_lower in ('baseline', 'find'):
             node_id = kwargs.get('node_id')
             rng = kwargs.get('rng')
