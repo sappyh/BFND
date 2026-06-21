@@ -7,7 +7,7 @@ venv/
 
 # Logs and outputs
 logs/
-results/
+# results/
 parameter_sweeps/
 estimates.png
 simulation_results_ourmethod_node5_1000.txt

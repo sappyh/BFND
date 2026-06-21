@@ -189,23 +189,93 @@ class Node:
 
     def run_one_time_step_fast(self, slot):
         self.ASN = slot
-
         harvested_energy = self.energy_harvester.get_energy_fast(slot)
-        self.compute_energy_level(harvested_energy)
 
-        self.action = ACTION.SLEEP
-
-        if self.state == STATE.ON:
-            self.ran_once = True
-            if self.runtype == RUN_TYPE.ADVERTISING:
-                self.action = ACTION.ADVERTISE
-            elif self.runtype == RUN_TYPE.SCANNING:
-                self.action = ACTION.SCAN
-            elif self.runtype == RUN_TYPE.NORMAL:
+        if self.state == STATE.OFF:
+            prev_energy = self.energy_level
+            net_energy = harvested_energy - self.esleep
+            self.energy_level += net_energy
+            if self.energy_level < 0.0:
+                self.energy_level = 0.0
+            
+            # Rising above Voff
+            if prev_energy < self.E_off and self.energy_level >= self.E_off:
                 if self.protocol:
-                    self.action = self.protocol.decide_action(self.ASN, self._available_energy_above_voff())
+                    self.protocol.on_voltage_above_voff(slot)
+            
+            # Reset if below brownout
+            if self.energy_level < self.E_brownout:
+                self.reset()
+                self.radio.sleep()
+                return
 
-        self.do_action(self.action)
+            # Turning ON
+            if self.energy_level >= self.E_on:
+                self.state = STATE.ON
+                self.logger.debug(f"Node {self.id} turned ON at ASN {self.ASN}")
+                if self.protocol:
+                    self.protocol.on_turn_on(slot)
+                
+                # Since it turned ON, decide action
+                self.action = ACTION.SLEEP
+                if self.runtype == RUN_TYPE.ADVERTISING:
+                    self.action = ACTION.ADVERTISE
+                elif self.runtype == RUN_TYPE.SCANNING:
+                    self.action = ACTION.SCAN
+                elif self.runtype == RUN_TYPE.NORMAL:
+                    if self.protocol:
+                        self.action = self.protocol.decide_action(slot, self._available_energy_above_voff())
+                
+                cost = 0.0
+                if self.action == ACTION.ADVERTISE:
+                    # Update phase shift
+                    elapsed = slot - self.last_phase_update_asn
+                    if elapsed > 0:
+                        self.phase_shift = (self.phase_shift + elapsed * self.clock_drift + 0.5) % 1.0 - 0.5
+                        self.last_phase_update_asn = slot
+                    jitter = self.rng.uniform(-0.15, 0.15)
+                    actual_phase = (self.phase_shift + jitter + 0.5) % 1.0 - 0.5
+                    self.radio.advertise(slot, self.id, actual_phase)
+                    self.metrics["adv_sent"] += 1
+                    cost = self.eadv
+                elif self.action == ACTION.SCAN:
+                    elapsed = slot - self.last_phase_update_asn
+                    if elapsed > 0:
+                        self.phase_shift = (self.phase_shift + elapsed * self.clock_drift + 0.5) % 1.0 - 0.5
+                        self.last_phase_update_asn = slot
+                    jitter = self.rng.uniform(-0.15, 0.15)
+                    actual_phase = (self.phase_shift + jitter + 0.5) % 1.0 - 0.5
+                    escan = getattr(self.protocol, 'escan', 0.0)
+                    self.radio.scan(slot, self.id, actual_phase)
+                    if self.protocol and hasattr(self.protocol, 'metrics'):
+                        self.protocol.metrics["scan_sent"] = self.protocol.metrics.get("scan_sent", 0) + 1
+                    cost = escan
+                elif self.action == ACTION.BUSY_WAIT:
+                    self.radio.sleep()
+                    cost = self.ebusy_wait
+                else:
+                    self.radio.sleep()
+                    cost = self.esleep
+
+                # Adjust energy level: we already subtracted esleep, so we subtract (cost - esleep)
+                self.compute_energy_level(-(cost - self.esleep))
+            else:
+                self.action = ACTION.SLEEP
+                self.radio.sleep()
+        else:
+            # Node is ON
+            self.compute_energy_level(harvested_energy)
+            self.action = ACTION.SLEEP
+            if self.state == STATE.ON:
+                self.ran_once = True
+                if self.runtype == RUN_TYPE.ADVERTISING:
+                    self.action = ACTION.ADVERTISE
+                elif self.runtype == RUN_TYPE.SCANNING:
+                    self.action = ACTION.SCAN
+                elif self.runtype == RUN_TYPE.NORMAL:
+                    if self.protocol:
+                        self.action = self.protocol.decide_action(self.ASN, self._available_energy_above_voff())
+            self.do_action(self.action)
 
     def reset(self):
         self.logger.debug(f"Node {self.id} resetting at ASN {self.ASN}")

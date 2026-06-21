@@ -65,6 +65,35 @@ The Find protocol minimizes discovery latency by appending a random delay—draw
 
 For example, if a node's charging phase takes `5000` slots (5 seconds), it seamlessly extrapolates the theoretically optimal scale parameter for its next advertising delay, ensuring the baseline operates at its peak during comparative tests.
 
+---
+
+## BFND Protocol Implementation
+
+Unlike `Find` which relies on geometric random delays to resolve collisions, the **BFND** (Battery-Free Neighbor Discovery) protocol is designed to be deterministic yet highly resilient to slot synchronization errors, clock drift, and energy intermittency.
+
+### How BFND Works:
+1. **State Machine & Probabilistic Choice**: Upon power-on, a node enters either `ADVERTISEMENT` state (with probability $\alpha$) or `SCAN` state (with probability $1 - \alpha$).
+2. **Deterministic Scheduling with Channel Maps**: 
+   - When in the `ADVERTISEMENT` state, the node does not select random slots. Instead, it schedules its next advertisement slot deterministically.
+   - By default, it schedules the advertisement to occur exactly at its assigned `offset` relative to the cycle start.
+   - However, if the node has previously discovered advertisements on certain slots (learned during scanning), it updates a local **channel map** (`self.channel_map`). The node then calculates the delay to all candidate slots (the default `offset` and all discovered slots in its channel map) and selects the one with the smallest delay relative to the current slot, effectively prioritizing deterministic rendezvous while avoiding active neighbors' slots.
+3. **Scan State & Energy Balancing**: In the `SCAN` state, the node scans for $N_{\text{scans}}$ back-to-back slots. This enables rapid discovery of any active advertising nodes. The number of scans per charge is dynamically balanced with advertisement energy:
+   $$N_{\text{scans}} = \max\left(1, \left\lfloor \frac{E_{\text{adv}}}{E_{\text{scan}}} \right\rfloor\right)$$
+   Since scanning is much less energy-intensive than advertising, this allows the node to maximize its listening window for each energy charge cycle.
+
+### Micro Jitter, Clock Drift, and Bilateral Discovery:
+To capture realistic physical hardware behaviors (such as nRF52840 clock crystals and execution jitter), the simulator incorporates micro-jitter and clock drift models:
+1. **Clock Drift (ppm)**: Each node is initialized with a constant clock drift rate $\Delta f \in [-20\text{ ppm}, +20\text{ ppm}]$. Over time, the node's internal slot boundary drifts relative to the global simulation timeline:
+   $$\text{phase\_shift} \leftarrow (\text{phase\_shift} + \text{elapsed\_slots} \times \Delta f) \pmod{1.0}$$
+2. **Phase Micro-Jitter**: In addition to clock drift, every individual radio event (advertisement or scan) has a randomized **micro-jitter** (phase dithering) of $\pm 150\ \mu\text{s}$ (i.e., $\pm 0.15$ of a slot width) added to its phase boundary. This simulates latency jitter in software execution paths, radio startup delays, and crystal startup times.
+3. **Bilateral Discovery Condition**: Under the asynchronous slotted model (`AsyncRadio`), discovery occurs when both nodes advertise in the *same* slot (`ACTION.ADVERTISE`). However, due to transceiver turnaround and physical timing constraints, they only hear each other if their relative physical starting phase difference falls within a specific window:
+   $$88\ \mu\text{s} \le |t_1 - t_2| \le 840\ \mu\text{s}$$
+   - If the phase difference is too small ($< 88\ \mu\text{s}$), the transmissions overlap too closely, causing packet collision and corruption.
+   - If the phase difference is too large ($> 840\ \mu\text{s}$), one transmission finishes before the other starts listening, resulting in a mismatch.
+   - **Crucially, the micro-jitter and clock drift are not just sources of noise; they are active mechanisms.** Over multiple cycles, the clock drift slowly slides the nodes' relative phase, and the $\pm 150\ \mu\text{s}$ micro-jitter dither ensures that their relative starting times will eventually land inside this successful bilateral discovery window during a slot when both choose to advertise.
+
+---
+
 ### Slotted Synchronization Models: Phased (Flync) and Asynchronous (Non-Phased)
 
 The simulator supports two models for slot-level synchronization between nodes:
