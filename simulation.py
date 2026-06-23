@@ -345,6 +345,20 @@ def execute_simulation_loop(env, total_slots, current_num_nodes, logger):
                         radio.subscribe()
                     for node in net['nodes']:
                         node.evaluate_time_step()
+                        
+                    # Enforce Bidirectional Discovery
+                    for node in net['nodes']:
+                        for discovered_id in list(node.metrics["discovered_nodes"]):
+                            local_id = discovered_id % current_num_nodes
+                            discovered_node = net['nodes'][local_id]
+                            
+                            if node.id not in discovered_node.metrics["discovered_nodes"]:
+                                discovered_node.metrics["discovered_nodes"].add(node.id)
+                                discovered_node.metrics["adv_success"] = len(discovered_node.metrics["discovered_nodes"])
+                                discovered_node.logger.debug(f"Node {discovered_node.id} got ADV success (bidirectional fix) at ASN {slot}")
+                                
+                                if discovered_node.protocol:
+                                    discovered_node.protocol.evaluate_time_step(slot, RADIO_STATE.SUCCESS, ACTION.ADVERTISE)
             
         for k, net in enumerate(networks):
             if not network_discovered[k]:
